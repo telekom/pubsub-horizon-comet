@@ -3,7 +3,7 @@ Upstream-Name: Comet
 Upstream-Contact: Deutsche Telekom AG <opensource@telekom.de>
 Source: https://github.com/telekom/pubsub-horizon-comet
 
-Files: docs/img/* renovate.json
+Files: docs/img/* renovate.json src/main/resources/META-INF/spring.factories
 Copyright: Copyright 2024 Deutsche Telekom IT GmbH
 License: CC-BY-4.0
 
