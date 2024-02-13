@@ -1,3 +1,9 @@
+<!--
+Copyright 2024 Deutsche Telekom IT GmbH
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Architecture
 The primary function of the Comet component is to facilitate the delivery of subscription-based event messages to subscribers using a callback for the deliverType.
 To achieve this, the component is configured to monitor the Kafka topic labeled as subscribed. The activation of the component is triggered by each newly subscribed event message with a deliverType callback.
