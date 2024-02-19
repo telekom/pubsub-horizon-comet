@@ -4,10 +4,10 @@
 
 package de.telekom.horizon.comet.config;
 
+import de.telekom.eni.pandora.horizon.metrics.AdditionalFields;
+import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
-import de.telekom.eni.pandora.horizon.victorialog.model.AdditionalFields;
-import de.telekom.eni.pandora.horizon.victorialog.model.MetricNames;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;

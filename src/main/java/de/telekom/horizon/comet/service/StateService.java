@@ -5,22 +5,25 @@
 package de.telekom.horizon.comet.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import de.telekom.eni.pandora.commons.tracing.ScopedDebugSpanWrapper;
 import de.telekom.eni.pandora.horizon.kafka.event.EventWriter;
+import de.telekom.eni.pandora.horizon.metrics.AdditionalFields;
+import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.StatusMessage;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.EventRetentionTime;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
-import de.telekom.eni.pandora.horizon.victorialog.model.AdditionalFields;
-import de.telekom.eni.pandora.horizon.victorialog.model.MetricNames;
+import de.telekom.eni.pandora.horizon.tracing.ScopedDebugSpanWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 

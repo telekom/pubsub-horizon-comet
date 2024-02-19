@@ -9,13 +9,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
 import de.telekom.eni.pandora.horizon.metrics.HorizonMetricsHelper;
+import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
-import de.telekom.eni.pandora.horizon.victorialog.client.VictoriaLogClient;
-import de.telekom.eni.pandora.horizon.victorialog.model.MetricNames;
-import de.telekom.eni.pandora.horizon.victorialog.model.Observation;
 import de.telekom.horizon.comet.client.RestClient;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.config.CometMetrics;
@@ -28,10 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
-import org.springframework.util.CollectionUtils;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
@@ -49,8 +45,6 @@ import static de.telekom.eni.pandora.horizon.metrics.HorizonMetricsConstants.*;
 @Slf4j
 public class DeliveryTask implements Runnable {
     private final SubscriptionEventMessage subscriptionEventMessage;
-
-    private final Observation observation;
 
     private final String callbackUrlOrEmptyStr;
 
@@ -74,8 +68,6 @@ public class DeliveryTask implements Runnable {
 
     private final DeliveryResultListener deliveryResultListener;
 
-    private final VictoriaLogClient victoriaLogClient;
-
     private Span deliverySpan;
 
     private final HorizonComponentId messageSource;
@@ -88,7 +80,6 @@ public class DeliveryTask implements Runnable {
      */
     public DeliveryTask(DeliveryTaskRecord deliveryTaskRecord) {
         this.subscriptionEventMessage = deliveryTaskRecord.subscriptionEventMessage();
-        this.observation = deliveryTaskRecord.observation();
         this.callbackUrlOrEmptyStr = deliveryTaskRecord.callbackUrl();
         this.backoffInterval = deliveryTaskRecord.backoffInterval();
         this.retryCount = deliveryTaskRecord.retryCount();
@@ -102,7 +93,6 @@ public class DeliveryTask implements Runnable {
         this.cometMetrics = deliveryTaskRecord.deliveryTaskFactory().getCometMetrics();
         this.circuitBreakerCacheService = deliveryTaskRecord.deliveryTaskFactory().getCircuitBreakerCacheService();
         this.deDuplicationService = deliveryTaskRecord.deliveryTaskFactory().getDeDuplicationService();
-        this.victoriaLogClient = deliveryTaskRecord.victoriaLogClient();
         this.deliverySpan = deliveryTaskRecord.deliverySpan();
         this.messageSource = deliveryTaskRecord.messageSource();
         this.context = deliveryTaskRecord.context();
@@ -181,7 +171,7 @@ public class DeliveryTask implements Runnable {
                 writeInternalExceptionMetricTag(exception);
             }
 
-            DeliveryResult deliveryResult = new DeliveryResult(subscriptionEventMessage, observation, status, shouldRedeliver, exception, deliverySpan, messageSource);
+            DeliveryResult deliveryResult = new DeliveryResult(subscriptionEventMessage, status, shouldRedeliver, exception, deliverySpan, messageSource);
             deliveryResultListener.handleDeliveryResult(deliveryResult);
             log.debug("Finished working on delivering message with id {}", subscriptionEventMessage.getUuid());
         }
@@ -281,13 +271,6 @@ public class DeliveryTask implements Runnable {
         var callbackSpan = tracer.startDebugSpan("callback");
         callbackSpan.kind(Span.Kind.CLIENT);
 
-        Observation responseObservation = null;
-        if (subscriptionEventMessage.getHttpHeaders() != null && victoriaLogClient.shouldTrackLatency(CollectionUtils.toMultiValueMap(subscriptionEventMessage.getHttpHeaders()))) {
-            var extraLabels = new HashMap<String, String>();
-            extraLabels.put("callback_response_time", "true");
-            responseObservation = victoriaLogClient.startObservationFromEvent(subscriptionEventMessage.getEvent(), extraLabels);
-        }
-
         try (var ignored = tracer.withDebugSpanInScope(callbackSpan)) {
             tracer.addTagsToSpanFromEventMessage(callbackSpan, subscriptionEventMessage);
             tracer.addTagsToSpanFromSubscriptionEventMessage(callbackSpan, subscriptionEventMessage);
@@ -301,7 +284,6 @@ public class DeliveryTask implements Runnable {
             log.info("Executing callback for EventMessage with id '{}' at '{}'", subscriptionEventMessage.getUuid(), callbackUrlOrEmptyStr);
             restClient.callback(subscriptionEventMessage, callbackUrlOrEmptyStr, context);
         } finally {
-            victoriaLogClient.finishAndAddObservation(responseObservation);
             callbackSpan.finish();
         }
     }

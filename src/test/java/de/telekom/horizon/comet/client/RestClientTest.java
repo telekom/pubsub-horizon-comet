@@ -9,7 +9,6 @@ import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
-import de.telekom.horizon.comet.service.CometService;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
 import de.telekom.horizon.comet.test.utils.HorizonTestHelper;
 import de.telekom.horizon.comet.test.utils.ObjectGenerator;

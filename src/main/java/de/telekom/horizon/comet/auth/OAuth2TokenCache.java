@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.horizon.comet.exception.BadTokenResponseException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import de.telekom.horizon.comet.exception.TokenRequestErrorException;
-import de.telekom.horizon.comet.service.CometService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.util.LinkedMultiValueMap;

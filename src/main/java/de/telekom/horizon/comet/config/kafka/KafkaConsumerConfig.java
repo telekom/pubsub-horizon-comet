@@ -9,6 +9,7 @@ import de.telekom.eni.pandora.horizon.model.meta.EventRetentionTime;
 import de.telekom.horizon.comet.kafka.KafkaConsumerRebalanceListener;
 import de.telekom.horizon.comet.kafka.SubscribedEventMessageListener;
 import de.telekom.horizon.comet.service.SubscribedEventMessageHandler;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -18,7 +19,6 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.kafka.listener.ContainerProperties;
 
-import jakarta.annotation.PreDestroy;
 import java.util.Arrays;
 
 /**
