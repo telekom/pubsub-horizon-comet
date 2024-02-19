@@ -6,13 +6,10 @@ package de.telekom.horizon.comet.service;
 
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
-import de.telekom.eni.pandora.horizon.model.event.Event;
 import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
-import de.telekom.eni.pandora.horizon.victorialog.client.VictoriaLogClient;
-import de.telekom.eni.pandora.horizon.victorialog.model.Observation;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
@@ -23,12 +20,10 @@ import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.kafka.support.SendResult;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
@@ -57,7 +52,6 @@ public class DeliveryService implements DeliveryResultListener {
 
     private final DeliveryTaskFactory deliveryTaskFactory;
 
-    private final VictoriaLogClient victoriaLogClient;
     private final DeDuplicationService deDuplicationService;
 
     /**
@@ -70,18 +64,16 @@ public class DeliveryService implements DeliveryResultListener {
      * @param circuitBreakerCacheService The {@code CircuitBreakerCacheService} instance for managing circuit breaker states.
      * @param deDuplicationService      The {@code DeDuplicationService} instance for handling duplicate events.
      * @param deliveryTaskFactory       The {@code DeliveryTaskFactory} instance for creating delivery tasks.
-     * @param victoriaLogClient         The {@code VictoriaLogClient} instance for logging observations.
      * @param meterRegistry             The {@code MeterRegistry} for monitoring thread pool metrics.
      */
     @Autowired
-    public DeliveryService(CometConfig cometConfig, HorizonTracer tracer, CallbackUrlCache callbackUrlCache, StateService stateService, CircuitBreakerCacheService circuitBreakerCacheService, DeDuplicationService deDuplicationService, DeliveryTaskFactory deliveryTaskFactory, VictoriaLogClient victoriaLogClient, MeterRegistry meterRegistry) {
+    public DeliveryService(CometConfig cometConfig, HorizonTracer tracer, CallbackUrlCache callbackUrlCache, StateService stateService, CircuitBreakerCacheService circuitBreakerCacheService, DeDuplicationService deDuplicationService, DeliveryTaskFactory deliveryTaskFactory, MeterRegistry meterRegistry) {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
         this.callbackUrlCache = callbackUrlCache;
         this.stateService = stateService;
         this.circuitBreakerCacheService = circuitBreakerCacheService;
         this.deliveryTaskFactory = deliveryTaskFactory;
-        this.victoriaLogClient = victoriaLogClient;
         this.deDuplicationService = deDuplicationService;
 
         retryCounts = new HashMap<>();
@@ -126,14 +118,13 @@ public class DeliveryService implements DeliveryResultListener {
      * Creates a new delivery task and submits it to the main delivery task executor.
      *
      * @param subscriptionEventMessage The SubscriptionEventMessage to be delivered.
-     * @param observation              The Observation associated with the event.
      * @param messageSource            The source of the message.
      */
-    public void deliver(SubscriptionEventMessage subscriptionEventMessage, Observation observation, HorizonComponentId messageSource) {
+    public void deliver(SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId messageSource) {
         var callbackUrlOrEmptyStr = getCallbackUrlOrEmptyStr(subscriptionEventMessage);
         // if callbackUrl is empty, we throw an CallbackUrlNotFoundException later, which gets handled
 
-        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, observation, callbackUrlOrEmptyStr, 0, 0, this, deliveryTaskFactory, victoriaLogClient, null, messageSource, null);
+        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, 0, 0, this, deliveryTaskFactory, null, messageSource, null);
         var deliveryTask = deliveryTaskFactory.createNew(deliveryTaskRecord);
 
         // Do not wait for thread
@@ -155,7 +146,6 @@ public class DeliveryService implements DeliveryResultListener {
     public void handleDeliveryResult(DeliveryResult deliveryResult) {
         var status = deliveryResult.status();
         var subscriptionEventMessage = deliveryResult.subscriptionEventMessage();
-        var observation = deliveryResult.observation();
         var shouldRedeliver = deliveryResult.shouldRedeliver();
 
         // Status can only be FAILED or DELIVERED
@@ -178,7 +168,7 @@ public class DeliveryService implements DeliveryResultListener {
         if (!status.equals(Status.DELIVERING) && !(deliveryResult.exception() instanceof CouldNotFetchAccessTokenException)) {
             retryCounts.remove(subscriptionEventMessage.getUuid());
 
-            updateDeliveryState(status, subscriptionEventMessage, observation, deliveryResult);
+            updateDeliveryState(status, subscriptionEventMessage, deliveryResult);
         }
     }
 
@@ -188,17 +178,14 @@ public class DeliveryService implements DeliveryResultListener {
      *
      * @param status                   The final status of the delivery.
      * @param subscriptionEventMessage The SubscriptionEventMessage associated with the delivery.
-     * @param observation              The Observation associated with the event.
      * @param deliveryResult           The DeliveryResult containing information about the delivery outcome.
      */
-    private void updateDeliveryState(Status status, SubscriptionEventMessage subscriptionEventMessage, Observation observation, DeliveryResult deliveryResult) {
+    private void updateDeliveryState(Status status, SubscriptionEventMessage subscriptionEventMessage, DeliveryResult deliveryResult) {
         try (var ignored = tracer.withSpanInScope(deliveryResult.deliverySpan())) {
             var afterSendFuture = stateService.updateState(status, subscriptionEventMessage, deliveryResult.exception());
             if (status.equals(Status.DELIVERED) || status.equals(Status.FAILED)) {
                 afterSendFuture.thenAccept(result -> trackEventForDeduplication(subscriptionEventMessage));
             }
-
-            addFinishAndCountObservationCallback(subscriptionEventMessage, observation, afterSendFuture);
         } finally {
             deliveryResult.deliverySpan().finish();
         }
@@ -212,30 +199,6 @@ public class DeliveryService implements DeliveryResultListener {
      */
     private boolean isOptedOutFromCircuitBreaker(String subscriptionId) {
         return callbackUrlCache.get(subscriptionId).isOptOutCircuitBreaker();
-    }
-
-    /**
-     * Adds a callback to the CompletableFuture to finish the observation and count the event in VictoriaLogClient.
-     *
-     * @param subscriptionEventMessage The SubscriptionEventMessage associated with the delivery.
-     * @param observation              The Observation associated with the event.
-     * @param future                   The CompletableFuture representing the asynchronous result of the state update.
-     */
-    private void addFinishAndCountObservationCallback(SubscriptionEventMessage subscriptionEventMessage, Observation observation, CompletableFuture<SendResult<String, String>> future) {
-        var event = subscriptionEventMessage.getEvent();
-
-        future.whenComplete((result, ex) -> finishAndCountObservation(observation, event));
-    }
-
-    /**
-     * Finishes the observation and adds it to VictoriaLogClient. Also, counts the event in VictoriaLogClient.
-     *
-     * @param observation The Observation to finish and add.
-     * @param event       The Event associated with the observation.
-     */
-    private void finishAndCountObservation(Observation observation, Event event) {
-        victoriaLogClient.finishAndAddObservation(observation);
-        victoriaLogClient.countEvent(event);
     }
 
     /**
@@ -289,7 +252,6 @@ public class DeliveryService implements DeliveryResultListener {
      */
     private boolean tryToRedeliver(DeliveryResult deliveryResult) {
         var subscriptionEventMessage = deliveryResult.subscriptionEventMessage();
-        var observation = deliveryResult.observation();
         var deliverySpan = deliveryResult.deliverySpan();
 
         var eventUuid = subscriptionEventMessage.getUuid();
@@ -307,7 +269,7 @@ public class DeliveryService implements DeliveryResultListener {
                 eventUuid, backoffInterval, retryCount, cometConfig.getMaxRetries());
 
 
-        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, observation, callbackUrlOrEmptyStr, backoffInterval, retryCount, this, deliveryTaskFactory, victoriaLogClient, deliverySpan, deliveryResult.messageSource(), null);
+        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, backoffInterval, retryCount, this, deliveryTaskFactory, deliverySpan, deliveryResult.messageSource(), null);
         var redeliverTask = deliveryTaskFactory.createNew(deliveryTaskRecord);
         redeliveryTaskExecutor.submit(tracer.withCurrentTraceContext(redeliverTask));
         return true;

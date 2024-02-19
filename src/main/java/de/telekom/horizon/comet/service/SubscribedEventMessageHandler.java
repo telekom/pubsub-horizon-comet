@@ -8,21 +8,18 @@ import brave.Span;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
+import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.DeliveryType;
 import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
-import de.telekom.eni.pandora.horizon.victorialog.client.VictoriaLogClient;
-import de.telekom.eni.pandora.horizon.victorialog.model.MetricNames;
-import de.telekom.eni.pandora.horizon.victorialog.model.Observation;
 import de.telekom.horizon.comet.config.CometMetrics;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -40,8 +37,6 @@ public class SubscribedEventMessageHandler {
 
     private final HorizonTracer tracer;
 
-    private final VictoriaLogClient victoriaLogClient;
-
     private final DeliveryService deliveryService;
 
     private final CircuitBreakerCacheService circuitBreakerCacheService;
@@ -56,7 +51,6 @@ public class SubscribedEventMessageHandler {
      * Constructs a SubscribedEventMessageHandler with necessary dependencies.
      *
      * @param tracer                   The tracer for creating spans.
-     * @param victoriaLogClient       The client for interacting with the VictoriaLog service.
      * @param deliveryService          The service responsible for event delivery.
      * @param circuitBreakerCacheService The service for managing circuit breaker states.
      * @param stateService             The service for managing event states.
@@ -66,7 +60,6 @@ public class SubscribedEventMessageHandler {
      */
     @Autowired
     public SubscribedEventMessageHandler(HorizonTracer tracer,
-                                         VictoriaLogClient victoriaLogClient,
                                          DeliveryService deliveryService,
                                          CircuitBreakerCacheService circuitBreakerCacheService,
                                          StateService stateService,
@@ -74,7 +67,6 @@ public class SubscribedEventMessageHandler {
                                          ObjectMapper objectMapper,
                                          CometMetrics cometMetrics) {
         this.tracer = tracer;
-        this.victoriaLogClient = victoriaLogClient;
         this.deliveryService = deliveryService;
         this.circuitBreakerCacheService = circuitBreakerCacheService;
         this.stateService = stateService;
@@ -132,8 +124,6 @@ public class SubscribedEventMessageHandler {
      * @throws InterruptedException If the operation is interrupted.
      */
     public CompletableFuture<SendResult<String, String>> handleEvent(SubscriptionEventMessage subscriptionEventMessage, Span rootSpan, HorizonComponentId messageSource) throws ExecutionException, InterruptedException {
-        Observation observationOrNull = startObservationFromEventOrNull(subscriptionEventMessage);
-
         if (isCircuitBreakerOpenOrChecking(subscriptionEventMessage)) {
             rootSpan.annotate("Circuit Breaker open! Set event on WAITING");
             return stateService.updateState(Status.WAITING, subscriptionEventMessage, null);
@@ -147,7 +137,7 @@ public class SubscribedEventMessageHandler {
         }
 
         // circuit breaker is not open AND event is NO duplicate
-        return deliverEvent(subscriptionEventMessage, observationOrNull, messageSource);
+        return deliverEvent(subscriptionEventMessage, messageSource);
     }
 
     /**
@@ -160,32 +150,18 @@ public class SubscribedEventMessageHandler {
         return circuitBreakerCacheService.isCircuitBreakerOpenOrChecking(subscriptionEventMessage.getSubscriptionId());
     }
 
-    /**
-     * Start {@link Observation} if latency should be tracked.
-     *
-     * @param subscriptionEventMessage The SubscriptionEventMessage to handle observations for.
-     * @return
-     */
-    private Observation startObservationFromEventOrNull(SubscriptionEventMessage subscriptionEventMessage) {
-        if (subscriptionEventMessage.getHttpHeaders() != null && victoriaLogClient.shouldTrackLatency(CollectionUtils.toMultiValueMap(subscriptionEventMessage.getHttpHeaders()))) {
-            return victoriaLogClient.startObservationFromEvent(subscriptionEventMessage.getEvent());
-        }
-        log.info("Consumed message with id {}", subscriptionEventMessage.getUuid());
-        return null;
-    }
 
     /**
      * Sets the subscription event status to DELIVERING and initiates delivery.
      *
      * @param subscriptionEventMessage The SubscriptionEventMessage to handle.
-     * @param observation              The Observation instance.
      * @param clientId                 The message source identified by HorizonComponentId.
      * @return CompletableFuture for the DELIVERING status sending
      */
-    private CompletableFuture<SendResult<String, String>> deliverEvent(SubscriptionEventMessage subscriptionEventMessage, Observation observation, HorizonComponentId clientId){
+    private CompletableFuture<SendResult<String, String>> deliverEvent(SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId clientId){
         CompletableFuture<SendResult<String, String>> afterStatusSendFuture = stateService.updateState(Status.DELIVERING, subscriptionEventMessage, null);
         cometMetrics.recordE2eEventLatencyAndExtendMetadata(subscriptionEventMessage, MetricNames.EndToEndLatencyTardis, clientId);
-        deliveryService.deliver(subscriptionEventMessage, observation, clientId); // Starts async task in pool
+        deliveryService.deliver(subscriptionEventMessage, clientId); // Starts async task in pool
 
         return afterStatusSendFuture;
     }

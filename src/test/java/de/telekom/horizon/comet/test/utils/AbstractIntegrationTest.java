@@ -120,7 +120,6 @@ public abstract class AbstractIntegrationTest {
         registry.add("horizon.cache.kubernetesServiceDns", () -> "");
         registry.add("horizon.cache.deDuplication.enabled", () -> true);
         registry.add("kubernetes.enabled", () -> false);
-        registry.add("horizon.victorialog.enabled", () -> false);
         registry.add("comet.oidc.token-uri", () -> wireMockServer.baseUrl() + "/oidc");
         registry.add("comet.oidc.cronTokenFetch", () -> "-");
         registry.add("comet.callback.max-retries", () -> 2);

@@ -6,21 +6,17 @@ package de.telekom.horizon.comet.service;
 
 import de.telekom.eni.pandora.horizon.kubernetes.InformerStoreInitHandler;
 import de.telekom.eni.pandora.horizon.kubernetes.SubscriptionResourceListener;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ExitCodeEvent;
-import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEvent;
-import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.kafka.event.ContainerStoppedEvent;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
-
-import jakarta.annotation.PostConstruct;
 
 /**
  * The {@code CometService} class is responsible for managing Comet-related functionalities, including Kafka message
