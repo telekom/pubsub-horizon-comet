@@ -41,21 +41,26 @@ git clone [repository-url]
 cd comet
 ```
 
-#### 2. Install Dependencies
+### 2. Install Dependencies
 ```bash
 ./gradlew build
 ```
 
-#### 3. Start docker-compose
+### 3. Run Locally
+
 ```bash
-docker-compuse up -d
+./gradlew bootRun
 ```
 
-#### 4. Run Locally
+### 4. Docker build
+
+The default docker base image is `azul/zulu-openjdk-alpine:21-jre`. This is customizable via the docker build arg `DOCKER_BASE_IMAGE`.
+Please note that the default helm values configure the kafka compression type `snappy` whose dependencies have to be available in the result image.
+So either provide a base image with snappy installed or change/disable the compression type in the helm values.
+
 ```bash
-./gradlew bootRun --args='--spring.profiles.active=dev'
+docker build -t horizon-comet:latest --build-arg="DOCKER_BASE_IMAGE=<myjvmbaseimage:1.0.0>" . 
 ```
-This command will start Horizon Comet in development mode.
 
 ## Code of Conduct
 
