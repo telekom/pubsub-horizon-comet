@@ -59,7 +59,7 @@ docker build -t horizon-comet:latest . -f Dockerfile.multi-stage
 
 ## Running Comet
 ### Locally
-Before you can run Comet locally you must have a running instance of Kafka and ENI API locally or forwarded from a remote cluster.
+Before you can run Comet locally you must have a running instance of Kafka locally or forwarded from a remote cluster.
 Additionally, you need to have a Kubernetes config at `${user.home}/.kube/config.main` that points to the cluster you want to use.
 
 After that you can run Comet in a dev mode using this command:
