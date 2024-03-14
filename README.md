@@ -15,6 +15,7 @@ SPDX-License-Identifier: Apache-2.0
 
 <p align="center">
   <a href="#prerequisites">Prerequisites</a> •
+  <a href="#building-comet">Building Comet</a> •
   <a href="#configuration">Configuration</a> •
   <a href="#running-comet">Running Comet</a>
 </p>
@@ -33,9 +34,6 @@ For the optimal setup, ensure you have:
 
 - A running instance of Kafka
 - Access to a Kubernetes cluster on which the `Subscription` (subscriber.horizon.telekom.de) custom resource definition has been registered
-
-## Configuration
-Comet configuration is managed through environment variables. Check the [complete list](docs/environment-variables.md) of supported environment variables for setup instructions.
 
 ### Gradle build
 
@@ -58,6 +56,9 @@ To simplify things, we have also added a mult-stage Dockerfile to the respositor
 ```bash
 docker build -t horizon-comet:latest . -f Dockerfile.multi-stage 
 ```
+
+## Configuration
+Comet configuration is managed through environment variables. Check the [complete list](docs/environment-variables.md) of supported environment variables for setup instructions.
 
 ## Running Comet
 ### Locally
