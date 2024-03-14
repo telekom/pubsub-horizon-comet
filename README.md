@@ -4,8 +4,10 @@ Copyright 2024 Deutsche Telekom IT GmbH
 SPDX-License-Identifier: Apache-2.0
 -->
 
-<img src="docs/img/comet.svg" alt="comet-logo" height="250px"/>
-<h1>Comet</h1>
+<p align="center">
+  <img src="docs/img/comet.svg" alt="Comet logo" width="200">
+  <h1 align="center">Comet</h1>
+</p>
 
 <p align="center">
   Horizon component for the delivery and redelivery of eventMessages with deliveryType callback.
