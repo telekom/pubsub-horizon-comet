@@ -17,50 +17,60 @@ SPDX-License-Identifier: Apache-2.0
   <a href="#running-comet">Running Comet</a>
 </p>
 
+<!--
+[![REUSE status](https://api.reuse.software/badge/github.com/telekom/pubsub-horizon-comet)](https://api.reuse.software/info/github.com/telekom/pubsub-horizon-comet)
+-->
+[![Gradle Build and Test](https://github.com/telekom/pubsub-horizon-comet/actions/workflows/gradle-build.yml/badge.svg)](https://github.com/telekom/pubsub-horizon-comet/actions/workflows/gradle-build.yml)
+
 ## Overview
-The Horizon component, which controls the delivery and redelivery of event messages via callback mechanisms, plays a central role in the process of efficient event processing.
-We welcome and appreciate contributions from the developer community. Check our [contributing guide](LINK_TO_CONTRIBUTING_GUIDE.md) to get started!
 
-### Prerequisites
-To test changes locally, ensure the following prerequisites are met:
+Horizon Comet is one of the central components for the delivery of event messages. It handles the delivery and redelivery of event messages to callback endpoints of subscribed consumers and provides retry mechanisms.
 
-- Have a Kubernetes config at `${user.home}/.kube/config.laptop-awsd-live-system` pointing to a non-production cluster.
-- Having a namespace as configured in `kubernetes.informer.namespace` and a CustomResource `subscriptions.subscriber.horizon.telekom.de`.
-- The resource definition can be found in the [Horizon Essentials Helm Chart](https://gitlab.devops.telekom.de/dhei/teams/pandora/argocd-charts/horizon-3.0/essentials/-/tree/main?ref_type=heads)
+## Prerequisites
+For the optimal setup, ensure you have:
+
+- A running instance of Kafka
+- Access to a Kubernetes cluster on which the `Subscription` (subscriber.horizon.telekom.de) custom resource definition has been registered
 
 ## Configuration
-Comet configuration is managed through environment variables.
+Comet configuration is managed through environment variables. Check the [complete list](docs/environment-variables.md) of supported environment variables for setup instructions.
 
-## Running Comet
-Follow these steps to set up Horizon Comet for local development. Check the [complete list](docs/environment-variables.md) of supported environment variables for setup instruction
+### Gradle build
 
-### 1. Clone the Repository
-
-```bash
-git clone [repository-url]
-cd comet
-```
-
-### 2. Install Dependencies
 ```bash
 ./gradlew build
 ```
 
-### 3. Run Locally
-
-```bash
-./gradlew bootRun
-```
-
-### 4. Docker build
-
 The default docker base image is `azul/zulu-openjdk-alpine:21-jre`. This is customizable via the docker build arg `DOCKER_BASE_IMAGE`.
-Please note that the default helm values configure the kafka compression type `snappy` whose dependencies have to be available in the result image.
-So either provide a base image with snappy installed or change/disable the compression type in the helm values.
+Please note that the default helm values configure the kafka compression type `snappy` which requires gcompat to be installed in the resulting image.
+So either provide a base image with gcompat installed or change/disable the compression type in the helm values.
 
 ```bash
 docker build -t horizon-comet:latest --build-arg="DOCKER_BASE_IMAGE=<myjvmbaseimage:1.0.0>" . 
 ```
+
+#### Multi-stage Docker build
+
+To simplify things, we have also added a mult-stage Dockerfile to the respository, which also handles the Java build of the application in a build container. The resulting image already contains "gcompat", which is necessary for Kafka compression.
+
+```bash
+docker build -t horizon-comet:latest . -f Dockerfile.multi-stage 
+```
+
+## Running Comet
+### Locally
+Before you can run Comet locally you must have a running instance of Kafka and ENI API locally or forwarded from a remote cluster.
+Additionally, you need to have a Kubernetes config at `${user.home}/.kube/config.main` that points to the cluster you want to use.
+
+After that you can run Comet in a dev mode using this command:
+```shell
+./gradlew bootRun
+```
+
+## Contributing
+
+We're committed to open source, so we welcome and encourage everyone to join its developer community and contribute, whether it's through code or feedback.  
+By participating in this project, you agree to abide by its [Code of Conduct](./CODE_OF_CONDUCT.md) at all times.
 
 ## Code of Conduct
 
