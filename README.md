@@ -70,6 +70,10 @@ After that you can run Comet in a dev mode using this command:
 ./gradlew bootRun
 ```
 
+## Documentation
+
+Read more about the software architecture and the general process flow of Horizon Comet in [docs/architecture.md](docs/architecture.md).
+
 ## Contributing
 
 We're committed to open source, so we welcome and encourage everyone to join its developer community and contribute, whether it's through code or feedback.  
