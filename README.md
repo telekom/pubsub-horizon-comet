@@ -29,6 +29,8 @@ SPDX-License-Identifier: Apache-2.0
 
 Horizon Comet is one of the central components for the delivery of event messages. It handles the delivery and redelivery of event messages to callback endpoints of subscribed consumers and provides retry mechanisms.
 
+> **Note:** Comet is an essential part of the Horizon ecosystem. Please refer to [documentation of the entire system](https://github.com/telekom/pubsub-horizon) to get the full picture.
+
 ## Prerequisites
 For the optimal setup, ensure you have:
 
