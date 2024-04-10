@@ -134,6 +134,8 @@ public class SubscribedEventMessageHandler {
         boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
         if (isDuplicate) {
             // circuit breaker is not open AND event is a duplicate
+
+            // If isDuplicate true, msgUuidOrNull can't be null!!!!!!!!!!!!!!!!!!!!
             return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
         }
 
@@ -172,13 +174,13 @@ public class SubscribedEventMessageHandler {
      * Handles a duplicate subscription event and updates status accordingly.
      *
      * @param subscriptionEventMessage The SubscriptionEventMessage to handle.
-     * @param msgUuidOrNull            The UUID of the duplicate message.
+     * @param msgUuid            The UUID of the duplicate message.
      * @return CompletableFuture with SendResult based on event handling outcome.
      */
-    private CompletableFuture<SendResult<String, String>> handleDuplicateEvent(SubscriptionEventMessage subscriptionEventMessage, String msgUuidOrNull) {
+    private CompletableFuture<SendResult<String, String>> handleDuplicateEvent(SubscriptionEventMessage subscriptionEventMessage, String msgUuid) {
         CompletableFuture<SendResult<String, String>> afterStatusSendFuture = null;
 
-        if(Objects.equals(subscriptionEventMessage.getUuid(), msgUuidOrNull)) {
+        if(Objects.equals(subscriptionEventMessage.getUuid(), msgUuid)) {
             log.debug("Message with id {} was found in the deduplication cache with the same UUID. Message will be ignored, because status will probably set to DELIVERED in the next minutes.", subscriptionEventMessage.getUuid());
             log.warn("Message with id {} was found in the deduplication cache with the same UUID. Message will be ignored, because status will probably set to DELIVERED in the next minutes.", subscriptionEventMessage.getUuid());
         } else {
