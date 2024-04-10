@@ -130,13 +130,15 @@ public class SubscribedEventMessageHandler {
             return stateService.updateState(Status.WAITING, subscriptionEventMessage, null);
         }
 
-        String msgUuidOrNull = deDuplicationService.get(subscriptionEventMessage);
-        boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
-        if (isDuplicate) {
-            // circuit breaker is not open AND event is a duplicate
+        if (!subscriptionEventMessage.getStatus().equals(Status.PROCESSED)) {
+            String msgUuidOrNull = deDuplicationService.get(subscriptionEventMessage);
+            boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
+            if (isDuplicate) {
+                // circuit breaker is not open AND event is a duplicate
 
-            // If isDuplicate true, msgUuidOrNull can't be null!!!!!!!!!!!!!!!!!!!!
-            return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
+                // If isDuplicate true, msgUuidOrNull can't be null
+                return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
+            }
         }
 
         // circuit breaker is not open AND event is NO duplicate
