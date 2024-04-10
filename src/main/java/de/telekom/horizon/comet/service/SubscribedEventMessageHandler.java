@@ -130,7 +130,10 @@ public class SubscribedEventMessageHandler {
             return stateService.updateState(Status.WAITING, subscriptionEventMessage, null);
         }
 
-        if (!subscriptionEventMessage.getStatus().equals(Status.PROCESSED)) {
+        var status = subscriptionEventMessage.getStatus();
+        log.info("Status of subscriptionEventMessage with is {}", status);
+
+        if (status != null && !status.equals(Status.PROCESSED)) {
             String msgUuidOrNull = deDuplicationService.get(subscriptionEventMessage);
             boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
             if (isDuplicate) {
