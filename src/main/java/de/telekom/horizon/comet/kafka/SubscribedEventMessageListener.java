@@ -55,6 +55,7 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
             return null;
         }
 
+        log.warn("Received (message) ({}) record at partition {} and offset {} in topic {} with record id {}", MessageType.MESSAGE, record.partition(), record.offset(), record.topic(), record.key());
         log.debug("Received (message) ({}) record at partition {} and offset {} in topic {} with record id {}", MessageType.MESSAGE, record.partition(), record.offset(), record.topic(), record.key());
 
         try {

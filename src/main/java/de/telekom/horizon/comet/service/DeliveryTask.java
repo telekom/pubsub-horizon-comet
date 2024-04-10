@@ -253,8 +253,8 @@ public class DeliveryTask implements Runnable {
         log.info("Response was not accepted for event with id {}: {}. Should redeliver: {}", subscriptionEventMessage.getUuid(),
                 buildCauseDescription(exceptionCause, httpCode), shouldRedeliver);
         deliverySpan.error(callbackException);
-
         return shouldRedeliver;
+
     }
 
     /**

@@ -85,6 +85,7 @@ public class SubscribedEventMessageHandler {
      */
     public CompletableFuture<SendResult<String, String>> handleMessage(ConsumerRecord<String, String> consumerRecord) throws JsonProcessingException {
         log.debug("Start handling message with id {}", consumerRecord.key());
+        log.warn("Start handling message with id {}", consumerRecord.key());
         var subscriptionEventMessage = objectMapper.readValue(consumerRecord.value(), SubscriptionEventMessage.class);
 
         DeliveryType deliveryType = subscriptionEventMessage.getDeliveryType();
@@ -160,6 +161,7 @@ public class SubscribedEventMessageHandler {
      */
     private CompletableFuture<SendResult<String, String>> deliverEvent(SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId clientId){
         CompletableFuture<SendResult<String, String>> afterStatusSendFuture = stateService.updateState(Status.DELIVERING, subscriptionEventMessage, null);
+        log.warn("update state of subscriptionEventMessage with id {} to DELIVERING", subscriptionEventMessage.getUuid());
         cometMetrics.recordE2eEventLatencyAndExtendMetadata(subscriptionEventMessage, MetricNames.EndToEndLatencyTardis, clientId);
         deliveryService.deliver(subscriptionEventMessage, clientId); // Starts async task in pool
 
@@ -178,8 +180,10 @@ public class SubscribedEventMessageHandler {
 
         if(Objects.equals(subscriptionEventMessage.getUuid(), msgUuidOrNull)) {
             log.debug("Message with id {} was found in the deduplication cache with the same UUID. Message will be ignored, because status will probably set to DELIVERED in the next minutes.", subscriptionEventMessage.getUuid());
+            log.warn("Message with id {} was found in the deduplication cache with the same UUID. Message will be ignored, because status will probably set to DELIVERED in the next minutes.", subscriptionEventMessage.getUuid());
         } else {
             log.debug("Message with id {} was found in the deduplication cache with another UUID. Message will be set to DUPLICATE to prevent event being stuck at PROCESSED.", subscriptionEventMessage.getUuid());
+            log.warn("Message with id {} was found in the deduplication cache with another UUID. Message will be set to DUPLICATE to prevent event being stuck at PROCESSED.", subscriptionEventMessage.getUuid());
             afterStatusSendFuture =  stateService.updateState(Status.DUPLICATE, subscriptionEventMessage, null);
         }
 
