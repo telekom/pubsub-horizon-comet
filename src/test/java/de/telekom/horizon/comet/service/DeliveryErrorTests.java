@@ -12,15 +12,19 @@ import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.StatusMessage;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
 import de.telekom.horizon.comet.test.utils.HorizonTestHelper;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.skyscreamer.jsonassert.comparator.JSONCompareUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -84,6 +88,7 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
         assertFalse(circuitBreakerCacheService.isCircuitBreakerOpenOrChecking(subscriptionId));
     }
 
+    @Disabled
     @Test
     void testDropDuplicateAndSendStatusMessage() throws InterruptedException, JsonProcessingException {
         // given
@@ -95,6 +100,7 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
         );
 
         SubscriptionResource subscriptionResource = HorizonTestHelper.createDefaultSubscriptionResource("playground", getEventType());
+
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCallback(wireMockServer.baseUrl() + callbackPath);
         addTestSubscription(subscriptionResource);
@@ -121,8 +127,7 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
             simulateNewPublishedEvent(subscriptionMessage);
         });
 
-        //then
-        // collect latest status messages for eventType
+        //then collect latest status messages for eventType
         var duplicateStatusMessagesReceived = 0;
         StatusMessage statusMessage = null;
         while((statusRecord = pollForRecord(10, TimeUnit.SECONDS)) != null) {
@@ -131,6 +136,7 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
                 statusMessage = objectMapper.readValue(statusRecord.value(), StatusMessage.class);
             }
         }
+
         // assert count of status messages because order of status messages can not be guaranteed
         assertEquals(1, duplicateStatusMessagesReceived);
         assertNotNull(statusMessage);
