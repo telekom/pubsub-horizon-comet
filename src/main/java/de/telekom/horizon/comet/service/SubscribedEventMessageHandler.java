@@ -133,15 +133,12 @@ public class SubscribedEventMessageHandler {
         var status = subscriptionEventMessage.getStatus();
         log.info("Status of subscriptionEventMessage with is {}", status);
 
-        if (status != null && !status.equals(Status.PROCESSED)) {
-            String msgUuidOrNull = deDuplicationService.get(subscriptionEventMessage);
-            boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
-            if (isDuplicate) {
-                // circuit breaker is not open AND event is a duplicate
-
-                // If isDuplicate true, msgUuidOrNull can't be null
-                return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
-            }
+        String msgUuidOrNull = deDuplicationService.get(subscriptionEventMessage);
+        boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
+        if (isDuplicate) {
+            // circuit breaker is not open AND event is a duplicate
+            // If isDuplicate true, msgUuidOrNull can't be null
+            return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
         }
 
         // circuit breaker is not open AND event is NO duplicate
@@ -179,7 +176,7 @@ public class SubscribedEventMessageHandler {
      * Handles a duplicate subscription event and updates status accordingly.
      *
      * @param subscriptionEventMessage The SubscriptionEventMessage to handle.
-     * @param msgUuid            The UUID of the duplicate message.
+     * @param msgUuid The UUID of the duplicate message.
      * @return CompletableFuture with SendResult based on event handling outcome.
      */
     private CompletableFuture<SendResult<String, String>> handleDuplicateEvent(SubscriptionEventMessage subscriptionEventMessage, String msgUuid) {
