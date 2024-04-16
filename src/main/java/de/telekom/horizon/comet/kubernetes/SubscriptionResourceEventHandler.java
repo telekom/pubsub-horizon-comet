@@ -4,26 +4,23 @@
 
 package de.telekom.horizon.comet.kubernetes;
 
-import de.telekom.eni.pandora.horizon.kubernetes.InformerStoreInitSupport;
+import de.telekom.eni.pandora.horizon.kubernetes.HorizonResourceEventHandler;
 import de.telekom.eni.pandora.horizon.kubernetes.resource.SubscriptionResource;
 import de.telekom.eni.pandora.horizon.model.event.DeliveryType;
 import de.telekom.horizon.comet.cache.CallbackCacheProperties;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
-import io.fabric8.kubernetes.api.model.HasMetadata;
-import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-
+import java.util.Collection;
 
 /**
  * The {@code SubscriptionResourceEventHandler} class is responsible for handling events related to {@link SubscriptionResource} instances.
  */
 @Service
 @Slf4j
-public class SubscriptionResourceEventHandler implements ResourceEventHandler<SubscriptionResource>, InformerStoreInitSupport {
+public class SubscriptionResourceEventHandler implements HorizonResourceEventHandler<SubscriptionResource> {
 
     /**
      * The cache for storing callback URLs associated with subscriptionIds.
@@ -99,7 +96,7 @@ public class SubscriptionResourceEventHandler implements ResourceEventHandler<Su
     * @param <T>  Type parameter extending HasMetadata.
     */
     @Override
-    public <T extends HasMetadata> void addAll(List<T> list) {
-        list.forEach(item -> onAdd((SubscriptionResource) item));
+    public void onInitialStateSet(Collection<SubscriptionResource> collection) {
+        collection.forEach(item -> onAdd(item));
     }
 }

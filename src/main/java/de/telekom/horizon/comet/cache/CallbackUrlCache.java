@@ -4,12 +4,14 @@
 
 package de.telekom.horizon.comet.cache;
 
+import de.telekom.eni.pandora.horizon.exception.UnhealthyCacheException;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The {@code CallbackUrlCache} class provides a service for managing callback properties associated with
@@ -19,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 @Scope(value = ConfigurableBeanFactory.SCOPE_SINGLETON)
 public class CallbackUrlCache {
+
+    private final AtomicBoolean healthy = new AtomicBoolean(false);
 
     /**
      * The ConcurrentHashMap to store subscriptionId to callback properties mapping.
@@ -31,7 +35,11 @@ public class CallbackUrlCache {
      * @param subscriptionId The subscriptionId for which to retrieve callback properties.
      * @return The CallbackCacheProperties object associated with the subscriptionId, or null if not found.
      */
-    public CallbackCacheProperties get(String subscriptionId) {
+    public CallbackCacheProperties get(String subscriptionId) throws UnhealthyCacheException {
+        if (!isHealthy()) {
+            throw new UnhealthyCacheException("PublisherCache is in unhealthy state.");
+        }
+
         return cache.get(subscriptionId);
     }
 
@@ -52,5 +60,13 @@ public class CallbackUrlCache {
      */
     public void remove(String subscriptionId) {
         cache.remove(subscriptionId);
+    }
+
+    public boolean isHealthy() {
+        return healthy.get();
+    }
+
+    public void setHealthy() {
+        healthy.compareAndExchange(false, true);
     }
 }

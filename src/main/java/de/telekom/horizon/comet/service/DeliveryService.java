@@ -6,6 +6,8 @@ package de.telekom.horizon.comet.service;
 
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
+import de.telekom.eni.pandora.horizon.common.exception.HorizonException;
+import de.telekom.eni.pandora.horizon.exception.UnhealthyCacheException;
 import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
@@ -120,7 +122,7 @@ public class DeliveryService implements DeliveryResultListener {
      * @param subscriptionEventMessage The SubscriptionEventMessage to be delivered.
      * @param messageSource            The source of the message.
      */
-    public void deliver(SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId messageSource) {
+    public void deliver(SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId messageSource) throws UnhealthyCacheException {
         var callbackUrlOrEmptyStr = getCallbackUrlOrEmptyStr(subscriptionEventMessage);
         // if callbackUrl is empty, we throw an CallbackUrlNotFoundException later, which gets handled
 
@@ -143,7 +145,7 @@ public class DeliveryService implements DeliveryResultListener {
      *                       and a flag indicating whether redelivery should be attempted.
      */
     @Override
-    public void handleDeliveryResult(DeliveryResult deliveryResult) {
+    public void handleDeliveryResult(DeliveryResult deliveryResult) throws HorizonException {
         var status = deliveryResult.status();
         var subscriptionEventMessage = deliveryResult.subscriptionEventMessage();
         var shouldRedeliver = deliveryResult.shouldRedeliver();
@@ -197,7 +199,7 @@ public class DeliveryService implements DeliveryResultListener {
      * @param subscriptionId The ID of the subscription to check.
      * @return True if the subscription has opted out from the circuit breaker; otherwise, false.
      */
-    private boolean isOptedOutFromCircuitBreaker(String subscriptionId) {
+    private boolean isOptedOutFromCircuitBreaker(String subscriptionId) throws UnhealthyCacheException {
         return callbackUrlCache.get(subscriptionId).isOptOutCircuitBreaker();
     }
 
@@ -236,7 +238,7 @@ public class DeliveryService implements DeliveryResultListener {
      * @param subscriptionEventMessage The SubscriptionEventMessage for which to get the callbackUrl.
      * @return The callbackUrl obtained from the cache or additional fields.
      */
-    private String getCallbackUrlOrEmptyStr(SubscriptionEventMessage subscriptionEventMessage) {
+    private String getCallbackUrlOrEmptyStr(SubscriptionEventMessage subscriptionEventMessage) throws UnhealthyCacheException {
         var callbackUrlCacheEntry = callbackUrlCache.get(subscriptionEventMessage.getSubscriptionId());
         if (callbackUrlCacheEntry != null) {
             return Optional.ofNullable(callbackUrlCacheEntry.getUrl()).orElse("");
@@ -250,7 +252,7 @@ public class DeliveryService implements DeliveryResultListener {
      * @param deliveryResult The DeliveryResult containing information about the original delivery.
      * @return True if redelivery is scheduled; otherwise, false if the maximum retries are reached.
      */
-    private boolean tryToRedeliver(DeliveryResult deliveryResult) {
+    private boolean tryToRedeliver(DeliveryResult deliveryResult) throws UnhealthyCacheException {
         var subscriptionEventMessage = deliveryResult.subscriptionEventMessage();
         var deliverySpan = deliveryResult.deliverySpan();
 
@@ -280,7 +282,7 @@ public class DeliveryService implements DeliveryResultListener {
      *
      * @param subscriptionEventMessage The SubscriptionEventMessage for which to open the circuit breaker.
      */
-    private void openCircuitBreaker(SubscriptionEventMessage subscriptionEventMessage) {
+    private void openCircuitBreaker(SubscriptionEventMessage subscriptionEventMessage) throws UnhealthyCacheException {
         circuitBreakerCacheService.openCircuitBreaker(subscriptionEventMessage.getSubscriptionId(),
                 getCallbackUrlOrEmptyStr(subscriptionEventMessage),
                 subscriptionEventMessage.getEnvironment());

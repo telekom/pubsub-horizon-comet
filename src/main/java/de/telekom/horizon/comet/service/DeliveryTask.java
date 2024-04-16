@@ -8,6 +8,7 @@ import brave.Span;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
+import de.telekom.eni.pandora.horizon.common.exception.HorizonException;
 import de.telekom.eni.pandora.horizon.metrics.HorizonMetricsHelper;
 import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.Status;
@@ -172,7 +173,12 @@ public class DeliveryTask implements Runnable {
             }
 
             DeliveryResult deliveryResult = new DeliveryResult(subscriptionEventMessage, status, shouldRedeliver, exception, deliverySpan, messageSource);
-            deliveryResultListener.handleDeliveryResult(deliveryResult);
+            try {
+                deliveryResultListener.handleDeliveryResult(deliveryResult);
+            } catch (HorizonException e) {
+                writeInternalExceptionMetricTag(e);
+            }
+
             log.debug("Finished working on delivering message with id {}", subscriptionEventMessage.getUuid());
         }
     }

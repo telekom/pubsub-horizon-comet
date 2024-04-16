@@ -4,15 +4,18 @@
 
 package de.telekom.horizon.comet.service;
 
-import de.telekom.eni.pandora.horizon.kubernetes.InformerStoreInitHandler;
+import de.telekom.eni.pandora.horizon.exception.CouldNotStartInformerException;
+import de.telekom.eni.pandora.horizon.kubernetes.ListenerEvent;
 import de.telekom.eni.pandora.horizon.kubernetes.SubscriptionResourceListener;
+import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ExitCodeEvent;
+import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationEvent;
+import org.springframework.context.event.ApplicationContextEvent;
 import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.ContextStoppedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.kafka.event.ContainerStoppedEvent;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
@@ -28,14 +31,13 @@ import org.springframework.stereotype.Service;
 @Service
 public class CometService {
 
+    private final ApplicationContext applicationContext;
+
+    private final CallbackUrlCache callbackUrlCache;
+
     private final ConcurrentMessageListenerContainer<String, String> messageListenerContainer;
 
     private final SubscriptionResourceListener subscriptionResourceListener;
-
-    private final InformerStoreInitHandler informerStoreInitHandler;
-
-    private final ApplicationContext context;
-
 
     /**
      * Constructs a CometService instance.
@@ -43,18 +45,15 @@ public class CometService {
      * @param messageListenerContainer   The Kafka message listener container.
      * @param subscriptionResourceListener Optional listener for subscription resources.
      * @param informerStoreInitHandler   Optional handler for initializing informer store.
-     * @param context                    The application context.
+     * @param applicationContext                    The application context.
      */
-    public CometService(ConcurrentMessageListenerContainer<String, String> messageListenerContainer,
-                       @Autowired(required = false) SubscriptionResourceListener subscriptionResourceListener,
-                       @Autowired(required = false) InformerStoreInitHandler informerStoreInitHandler,
-                       ApplicationContext context) {
+    public CometService(ApplicationContext applicationContext, CallbackUrlCache callbackUrlCache, ConcurrentMessageListenerContainer<String, String> messageListenerContainer,
+                        SubscriptionResourceListener subscriptionResourceListener) {
+        this.applicationContext = applicationContext;
+        this.callbackUrlCache = callbackUrlCache;
         this.messageListenerContainer = messageListenerContainer;
         this.subscriptionResourceListener = subscriptionResourceListener;
-        this.informerStoreInitHandler = informerStoreInitHandler;
-        this.context = context;
     }
-
 
     /**
      * Initializes the CometService. If SubscriptionResourceListener is present, starts it and waits until
@@ -63,36 +62,36 @@ public class CometService {
     @PostConstruct
     public void init() {
         if (subscriptionResourceListener != null) {
-            subscriptionResourceListener.start();
+            try {
+                subscriptionResourceListener.start();
+            } catch (CouldNotStartInformerException e) {
+                log.error(e.getMessage(), e);
+                SpringApplication.exit(applicationContext, () -> 1);
+            }
+        }
 
-            log.info("SubscriptionResourceListener started.");
+        if (messageListenerContainer != null) {
+            messageListenerContainer.start();
 
-            (new Thread(() -> {
-                log.info("Waiting until Subscription resources are fully synced...");
-
-                while(!informerStoreInitHandler.isFullySynced()) {
-                    try {
-                        Thread.sleep(1000L);
-                    } catch (InterruptedException var6) {
-                        break;
-                    }
-                }
-
-                startMessageListenerContainer();
-            })).start();
-        } else {
-            startMessageListenerContainer();
+            log.info("ConcurrentMessageListenerContainer started.");
         }
     }
 
-    /**
-     * Starts the Kafka message listener container if it is not null.
-     * This method is designed to initiate the consumption of Kafka messages.
-     */
-    private void startMessageListenerContainer() {
-        if (messageListenerContainer != null) {
-            messageListenerContainer.start();
-            log.info("ConcurrentMessageListenerContainer started.");
+    @EventListener
+    public void handleSubscriptionResourceListenerEvent(ListenerEvent e) {
+        if (e.getType() == ListenerEvent.Type.SUBSCRIPTION_RESOURCE_LISTENER) {
+            switch (e.getEvent()) {
+                case INFORMER_STARTED -> {
+                    log.info("Received INFORMER_STARTED event from SubscriptionResourceListener.");
+
+                    callbackUrlCache.setHealthy();
+                }
+                case INFORMER_STOPPED -> {
+                    log.error("Received INFORMER_STOPPED event from SubscriptionResourceListener, terminating.");
+
+                    SpringApplication.exit(applicationContext, () -> 2);
+                }
+            }
         }
     }
 
@@ -103,31 +102,32 @@ public class CometService {
     private void stopMessageListenerContainer() {
         log.info("Stop kafka message listener container");
 
-        if (messageListenerContainer != null && messageListenerContainer.isRunning()) {
+        if (messageListenerContainer != null) {
             messageListenerContainer.stop();
         }
     }
 
-    /**
-     * Handles the application stopping event by stopping the Kafka message listener container.
-     *
-     * @param event The application event triggering the handler.
-     *              It should be an instance of {@code ContextClosedEvent} or {@code ExitCodeEvent}.
-     */
     @EventListener
-    public void applicationStoppedHandler(ApplicationEvent event) {
-        if (event instanceof ContextClosedEvent) {
+    public void applicationContextEventHandler(ApplicationContextEvent event) {
+        if (event instanceof ContextStoppedEvent){
+
+            log.info("Context stopped event");
+            stopMessageListenerContainer();
+        } else if (event instanceof ContextClosedEvent){
             log.info("Context closed event");
+            stopMessageListenerContainer();
+        }
+    }
+
+    @EventListener
+    public void exitCodeEventHandler(ExitCodeEvent event) {
+        log.info("Exit code event");
+
+        var exitCode = event.getExitCode();
+        if (exitCode > 0) {
+            log.info("Exit code {}", exitCode);
 
             stopMessageListenerContainer();
-        } else if (event instanceof ExitCodeEvent exitcodeevent)  {
-            log.info("Exit code event");
-
-            if (exitcodeevent.getExitCode() == -2) {
-                log.info("Exit code -2");
-
-                stopMessageListenerContainer();
-            }
         }
     }
 
@@ -138,9 +138,11 @@ public class CometService {
      * @param event The {@code ContainerStoppedEvent} triggered when the Kafka container is stopped.
      */
     @EventListener
-    public void containerStoppedHandler(ContainerStoppedEvent event) {
-        log.error("MessageListenerContainer stopped. Exiting...");
+    public void kafkaContainerStoppedEventHandler(ContainerStoppedEvent event) {
+        log.error("MessageListenerContainer stopped with event {}. Exiting...", event.toString());
 
         stopMessageListenerContainer();
+
+        SpringApplication.exit(applicationContext, () -> 3);
     }
 }

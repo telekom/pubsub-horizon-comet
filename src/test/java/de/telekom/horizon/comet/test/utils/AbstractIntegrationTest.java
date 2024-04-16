@@ -7,6 +7,7 @@ package de.telekom.horizon.comet.test.utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
 import de.telekom.eni.pandora.horizon.kafka.event.EventWriter;
+import de.telekom.eni.pandora.horizon.kubernetes.SubscriptionResourceListener;
 import de.telekom.eni.pandora.horizon.kubernetes.resource.SubscriptionResource;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.EventRetentionTime;
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.KafkaMessageListenerContainer;
@@ -59,6 +61,9 @@ public abstract class AbstractIntegrationTest {
             .options(wireMockConfig().dynamicPort())
             .build();
 
+    @MockBean
+    private SubscriptionResourceListener subscriptionResourceListener;
+
     @Autowired
     public MockMvc mockmvc;
 
@@ -79,6 +84,8 @@ public abstract class AbstractIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        callbackUrlCache.setHealthy();
+
         eventType = "junit.test.event." + DigestUtils.sha1Hex(String.valueOf(System.currentTimeMillis()));
 
         multiplexedRecordsMap.putIfAbsent(getEventType(), new LinkedBlockingQueue<>());
@@ -119,7 +126,6 @@ public abstract class AbstractIntegrationTest {
         registry.add("horizon.kafka.autoCreateTopics", () -> true);
         registry.add("horizon.cache.kubernetesServiceDns", () -> "");
         registry.add("horizon.cache.deDuplication.enabled", () -> true);
-        registry.add("kubernetes.enabled", () -> false);
         registry.add("comet.oidc.token-uri", () -> wireMockServer.baseUrl() + "/oidc");
         registry.add("comet.oidc.cronTokenFetch", () -> "-");
         registry.add("comet.callback.max-retries", () -> 2);

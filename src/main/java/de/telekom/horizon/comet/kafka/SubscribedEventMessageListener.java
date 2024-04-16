@@ -9,7 +9,6 @@ import de.telekom.eni.pandora.horizon.model.event.MessageType;
 import de.telekom.horizon.comet.service.SubscribedEventMessageHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.jetbrains.annotations.NotNull;
 import org.springframework.kafka.listener.AbstractConsumerSeekAware;
 import org.springframework.kafka.listener.BatchAcknowledgingMessageListener;
 import org.springframework.kafka.support.Acknowledgment;
@@ -75,7 +74,7 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
      * @param acknowledgment The Acknowledgment to acknowledge or nack the batch.
      */
     @Override
-    public void onMessage(@NotNull List<ConsumerRecord<String, String>> records, @NotNull Acknowledgment acknowledgment) {
+    public void onMessage(List<ConsumerRecord<String, String>> records, Acknowledgment acknowledgment) {
         List<String> eventUuids = records.stream().map(ConsumerRecord::key).toList();
         try {
             var afterDeliveringSendFutures = records.stream().map(this::onMessage).filter(Objects::nonNull).map(CompletableFuture::completedFuture).toList();

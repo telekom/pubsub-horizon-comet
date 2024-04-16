@@ -4,9 +4,10 @@
 
 package de.telekom.horizon.comet.service;
 
+import de.telekom.eni.pandora.horizon.common.exception.HorizonException;
 import de.telekom.horizon.comet.model.DeliveryResult;
 
 public interface DeliveryResultListener {
 
-    void handleDeliveryResult(DeliveryResult deliveryResult);
+    void handleDeliveryResult(DeliveryResult deliveryResult) throws HorizonException;
 }

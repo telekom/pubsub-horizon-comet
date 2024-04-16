@@ -8,6 +8,7 @@ import brave.Span;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
+import de.telekom.eni.pandora.horizon.exception.UnhealthyCacheException;
 import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.DeliveryType;
 import de.telekom.eni.pandora.horizon.model.event.Status;
@@ -123,7 +124,7 @@ public class SubscribedEventMessageHandler {
      * @throws ExecutionException   If an execution error occurs.
      * @throws InterruptedException If the operation is interrupted.
      */
-    public CompletableFuture<SendResult<String, String>> handleEvent(SubscriptionEventMessage subscriptionEventMessage, Span rootSpan, HorizonComponentId messageSource) throws ExecutionException, InterruptedException {
+    public CompletableFuture<SendResult<String, String>> handleEvent(SubscriptionEventMessage subscriptionEventMessage, Span rootSpan, HorizonComponentId messageSource) throws ExecutionException, InterruptedException, UnhealthyCacheException {
         if (isCircuitBreakerOpenOrChecking(subscriptionEventMessage)) {
             rootSpan.annotate("Circuit Breaker open! Set event on WAITING");
             return stateService.updateState(Status.WAITING, subscriptionEventMessage, null);
@@ -158,7 +159,7 @@ public class SubscribedEventMessageHandler {
      * @param clientId                 The message source identified by HorizonComponentId.
      * @return CompletableFuture for the DELIVERING status sending
      */
-    private CompletableFuture<SendResult<String, String>> deliverEvent(SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId clientId){
+    private CompletableFuture<SendResult<String, String>> deliverEvent(SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId clientId) throws UnhealthyCacheException {
         CompletableFuture<SendResult<String, String>> afterStatusSendFuture = stateService.updateState(Status.DELIVERING, subscriptionEventMessage, null);
         cometMetrics.recordE2eEventLatencyAndExtendMetadata(subscriptionEventMessage, MetricNames.EndToEndLatencyTardis, clientId);
         deliveryService.deliver(subscriptionEventMessage, clientId); // Starts async task in pool
