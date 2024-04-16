@@ -97,12 +97,8 @@ public class CometService {
     }
 
     /**
-     * Stops the Kafka message listener container if it is not null.
-     * This method is designed to gracefully stop the consumption of Kafka messages.
-     */
-
-    /**
      * Handles the application stopping event by stopping the Kafka message listener container.
+     * This method is designed to gracefully stop the consumption of Kafka messages.
      */
     @EventListener(classes = {ExitCodeEvent.class, ContextClosedEvent.class})
     public void applicationStoppedHandler() {
