@@ -10,8 +10,8 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ExitCodeEvent;
+import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.kafka.event.ContainerStoppedEvent;
@@ -34,7 +34,7 @@ public class CometService {
 
     private final InformerStoreInitHandler informerStoreInitHandler;
 
-    private final ApplicationContext context;
+    private final ApplicationContext applicationContext;
 
 
     /**
@@ -43,16 +43,16 @@ public class CometService {
      * @param messageListenerContainer   The Kafka message listener container.
      * @param subscriptionResourceListener Optional listener for subscription resources.
      * @param informerStoreInitHandler   Optional handler for initializing informer store.
-     * @param context                    The application context.
+     * @param applicationContext                    The application context.
      */
     public CometService(ConcurrentMessageListenerContainer<String, String> messageListenerContainer,
                        @Autowired(required = false) SubscriptionResourceListener subscriptionResourceListener,
                        @Autowired(required = false) InformerStoreInitHandler informerStoreInitHandler,
-                       ApplicationContext context) {
+                       ApplicationContext applicationContext) {
         this.messageListenerContainer = messageListenerContainer;
         this.subscriptionResourceListener = subscriptionResourceListener;
         this.informerStoreInitHandler = informerStoreInitHandler;
-        this.context = context;
+        this.applicationContext = applicationContext;
     }
 
 
@@ -97,50 +97,30 @@ public class CometService {
     }
 
     /**
-     * Stops the Kafka message listener container if it is not null and running.
+     * Stops the Kafka message listener container if it is not null.
      * This method is designed to gracefully stop the consumption of Kafka messages.
      */
-    private void stopMessageListenerContainer() {
-        log.info("Stop kafka message listener container");
-
-        if (messageListenerContainer != null && messageListenerContainer.isRunning()) {
-            messageListenerContainer.stop();
-        }
-    }
 
     /**
      * Handles the application stopping event by stopping the Kafka message listener container.
-     *
-     * @param event The application event triggering the handler.
-     *              It should be an instance of {@code ContextClosedEvent} or {@code ExitCodeEvent}.
      */
-    @EventListener
-    public void applicationStoppedHandler(ApplicationEvent event) {
-        if (event instanceof ContextClosedEvent) {
-            log.info("Context closed event");
+    @EventListener(classes = {ExitCodeEvent.class, ContextClosedEvent.class})
+    public void applicationStoppedHandler() {
+        if (messageListenerContainer != null && messageListenerContainer.isRunning()) {
+            messageListenerContainer.stop();
 
-            stopMessageListenerContainer();
-        } else if (event instanceof ExitCodeEvent exitcodeevent)  {
-            log.info("Exit code event");
-
-            if (exitcodeevent.getExitCode() == -2) {
-                log.info("Exit code -2");
-
-                stopMessageListenerContainer();
-            }
+            log.info("Kafka message listener container stopped.");
         }
     }
 
     /**
      * Handles the event when the Kafka message listener container is stopped.
-     * This method gracefully stops the message listener container and initiates the application exit process.
-     *
-     * @param event The {@code ContainerStoppedEvent} triggered when the Kafka container is stopped.
+     * This method initiates the application exit process when the Kafka message listener container has been stopped.
      */
-    @EventListener
-    public void containerStoppedHandler(ContainerStoppedEvent event) {
+    @EventListener(classes = {ContainerStoppedEvent.class})
+    public void containerStoppedHandler() {
         log.error("MessageListenerContainer stopped. Exiting...");
 
-        stopMessageListenerContainer();
+        System.exit(SpringApplication.exit(applicationContext, () -> 1));
     }
 }

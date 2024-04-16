@@ -18,8 +18,8 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicHeader;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -45,7 +45,7 @@ public class RestClient {
     private final HorizonTracer tracer;
     private final CloseableHttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private final ApplicationContext context;
+    private final ApplicationContext applicationContext;
 
     /**
      * Construct of a new {@code RestClient} with the specified params.
@@ -55,9 +55,10 @@ public class RestClient {
      * @param oAuth2TokenCache The OAuth2TokenCache instance for retrieving OAuth2 access tokens.
      * @param httpClient The CloseableHttpClient instance for making HTTP requests.
      * @param objectMapper The ObjectMapper instance for JSON serialization and deserialization.
+     * @param applicationContext The application context of Spring which needs to be closed in some error cases.
      */
     @Autowired
-    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
+    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext applicationContext) throws InterruptedException {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
 
@@ -66,19 +67,17 @@ public class RestClient {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
 
-        this.context = context;
+        this.applicationContext = applicationContext;
 
-        retrieveAllAccessTokens(context);
-
+        retrieveAllAccessTokens();
     }
 
     /**
      * Retrieves OAuth2 access token for the configured environments.
      *
-     * @param context The ApplicationContext instance for closing the application if token retrieval fails.
      * @throws InterruptedException If the thread is interrupted while sleeping.
      */
-    public void retrieveAllAccessTokens(ApplicationContext context) throws InterruptedException {
+    public void retrieveAllAccessTokens() throws InterruptedException {
         var retryCount = 0;
 
         do {
@@ -94,8 +93,8 @@ public class RestClient {
             }
         } while(retryCount < 5);
 
-        // Close the application after 5 attempts to get the accessTokens
-        SpringApplication.exit(context, () -> -2);
+        // Close the application context after 5 attempts to get the accessTokens
+        ((ConfigurableApplicationContext) applicationContext).close();
     }
 
     /**
@@ -184,12 +183,7 @@ public class RestClient {
      * a problem and logs an error message.
      */
     @Scheduled(cron = "${comet.oidc.cronTokenFetch}")
-    protected void triggerTokenRetrieval() {
-        try {
-            oAuth2TokenCache.retrieveAllAccessTokens();
-        } catch (CouldNotFetchAccessTokenException e) {
-            log.error("Error retrieving scheduled access tokens", e);
-            SpringApplication.exit(context, () -> -2);
-        }
+    protected void triggerTokenRetrieval() throws InterruptedException {
+        retrieveAllAccessTokens();
     }
 }
