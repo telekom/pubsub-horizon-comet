@@ -11,6 +11,7 @@ import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
+import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import de.telekom.horizon.comet.model.DeliveryResult;
@@ -53,6 +54,7 @@ public class DeliveryService implements DeliveryResultListener {
     private final DeliveryTaskFactory deliveryTaskFactory;
 
     private final DeDuplicationService deDuplicationService;
+
 
     /**
      * Constructs a {@code DeliveryService} with necessary dependencies.
@@ -198,7 +200,9 @@ public class DeliveryService implements DeliveryResultListener {
      * @return True if the subscription has opted out from the circuit breaker; otherwise, false.
      */
     private boolean isOptedOutFromCircuitBreaker(String subscriptionId) {
-        return callbackUrlCache.get(subscriptionId).isOptOutCircuitBreaker();
+        return callbackUrlCache.getDeliveryTargetInformation(subscriptionId)
+                .map(DeliveryTargetInformation::isOptOutCircuitBreaker)
+                .orElse(false);
     }
 
     /**
@@ -237,11 +241,9 @@ public class DeliveryService implements DeliveryResultListener {
      * @return The callbackUrl obtained from the cache or additional fields.
      */
     private String getCallbackUrlOrEmptyStr(SubscriptionEventMessage subscriptionEventMessage) {
-        var callbackUrlCacheEntry = callbackUrlCache.get(subscriptionEventMessage.getSubscriptionId());
-        if (callbackUrlCacheEntry != null) {
-            return Optional.ofNullable(callbackUrlCacheEntry.getUrl()).orElse("");
-        }
-        return "";
+        var callbackUrlCacheEntry = callbackUrlCache.getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId());
+        return callbackUrlCacheEntry.map(deliveryTargetInformation ->
+                Optional.ofNullable(deliveryTargetInformation.getUrl()).orElse("")).orElse("");
     }
 
     /**

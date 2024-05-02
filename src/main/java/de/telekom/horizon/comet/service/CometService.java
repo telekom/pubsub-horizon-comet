@@ -5,7 +5,6 @@
 package de.telekom.horizon.comet.service;
 
 import de.telekom.eni.pandora.horizon.kubernetes.InformerStoreInitHandler;
-import de.telekom.eni.pandora.horizon.kubernetes.SubscriptionResourceListener;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,10 +29,6 @@ public class CometService {
 
     private final ConcurrentMessageListenerContainer<String, String> messageListenerContainer;
 
-    private final SubscriptionResourceListener subscriptionResourceListener;
-
-    private final InformerStoreInitHandler informerStoreInitHandler;
-
     private final ApplicationContext context;
 
 
@@ -41,55 +36,21 @@ public class CometService {
      * Constructs a CometService instance.
      *
      * @param messageListenerContainer   The Kafka message listener container.
-     * @param subscriptionResourceListener Optional listener for subscription resources.
-     * @param informerStoreInitHandler   Optional handler for initializing informer store.
      * @param context                    The application context.
      */
     public CometService(ConcurrentMessageListenerContainer<String, String> messageListenerContainer,
-                       @Autowired(required = false) SubscriptionResourceListener subscriptionResourceListener,
-                       @Autowired(required = false) InformerStoreInitHandler informerStoreInitHandler,
                        ApplicationContext context) {
         this.messageListenerContainer = messageListenerContainer;
-        this.subscriptionResourceListener = subscriptionResourceListener;
-        this.informerStoreInitHandler = informerStoreInitHandler;
         this.context = context;
     }
 
 
     /**
-     * Initializes the CometService. If SubscriptionResourceListener is present, starts it and waits until
-     * the informer store is fully synced before starting the message listener container.
-     */
-    @PostConstruct
-    public void init() {
-        if (subscriptionResourceListener != null) {
-            subscriptionResourceListener.start();
-
-            log.info("SubscriptionResourceListener started.");
-
-            (new Thread(() -> {
-                log.info("Waiting until Subscription resources are fully synced...");
-
-                while(!informerStoreInitHandler.isFullySynced()) {
-                    try {
-                        Thread.sleep(1000L);
-                    } catch (InterruptedException var6) {
-                        break;
-                    }
-                }
-
-                startMessageListenerContainer();
-            })).start();
-        } else {
-            startMessageListenerContainer();
-        }
-    }
-
-    /**
      * Starts the Kafka message listener container if it is not null.
      * This method is designed to initiate the consumption of Kafka messages.
      */
-    private void startMessageListenerContainer() {
+    @PostConstruct
+    public void init() {
         if (messageListenerContainer != null) {
             messageListenerContainer.start();
             log.info("ConcurrentMessageListenerContainer started.");

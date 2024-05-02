@@ -6,11 +6,12 @@ package de.telekom.horizon.comet.test.utils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension;
+import de.telekom.eni.pandora.horizon.cache.service.JsonCacheService;
 import de.telekom.eni.pandora.horizon.kafka.event.EventWriter;
 import de.telekom.eni.pandora.horizon.kubernetes.resource.SubscriptionResource;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.EventRetentionTime;
-import de.telekom.horizon.comet.cache.CallbackCacheProperties;
+import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -21,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.KafkaMessageListenerContainer;
@@ -47,6 +49,9 @@ import static de.telekom.horizon.comet.test.utils.WiremockStubs.stubOidc;
 @AutoConfigureMockMvc
 @AutoConfigureObservability
 public abstract class AbstractIntegrationTest {
+
+    @MockBean
+    JsonCacheService<SubscriptionResource> subscriptionCache;
 
     static {
         EmbeddedKafkaHolder.getEmbeddedKafka();
@@ -100,10 +105,16 @@ public abstract class AbstractIntegrationTest {
     }
 
     public void addTestSubscription(SubscriptionResource subscriptionResource) {
-        callbackUrlCache.add(
-                subscriptionResource.getSpec().getSubscription().getSubscriptionId(),
-                new CallbackCacheProperties(subscriptionResource.getSpec().getSubscription().getCallback(), subscriptionResource.getSpec().getSubscription().isCircuitBreakerOptOut()));
+        callbackUrlCache.getDeliveryTargetInformation(
+                subscriptionResource.getSpec().getSubscription().getSubscriptionId());
+                new DeliveryTargetInformation(subscriptionResource.getSpec().getSubscription().getCallback(), subscriptionResource.getSpec().getSubscription().isCircuitBreakerOptOut());
     }
+
+//    public void addTestSubscription(SubscriptionResource subscriptionResource) {
+//        callbackUrlCache.add(
+//                subscriptionResource.getSpec().getSubscription().getSubscriptionId(),
+//                new CallbackCacheProperties(subscriptionResource.getSpec().getSubscription().getCallback(), subscriptionResource.getSpec().getSubscription().isCircuitBreakerOptOut()));
+//    }
 
     public ConsumerRecord<String, String> pollForRecord(int timeout, TimeUnit timeUnit) throws InterruptedException {
         return multiplexedRecordsMap.get(getEventType()).poll(timeout, timeUnit);

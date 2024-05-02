@@ -4,11 +4,16 @@
 
 package de.telekom.horizon.comet.cache;
 
+import de.telekom.eni.pandora.horizon.cache.service.JsonCacheService;
+import de.telekom.eni.pandora.horizon.cache.util.Query;
+import de.telekom.eni.pandora.horizon.exception.JsonCacheException;
+import de.telekom.eni.pandora.horizon.kubernetes.resource.SubscriptionResource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -17,40 +22,36 @@ import java.util.concurrent.ConcurrentHashMap;
  * This class is intended to be used in scenarios where callback information needs to be cached and quickly accessed.
  */
 @Service
+@Slf4j
 @Scope(value = ConfigurableBeanFactory.SCOPE_SINGLETON)
 public class CallbackUrlCache {
 
-    /**
-     * The ConcurrentHashMap to store subscriptionId to callback properties mapping.
-     */
-    private final Map<String, CallbackCacheProperties> cache = new ConcurrentHashMap<>();
+    private final JsonCacheService<SubscriptionResource> subscriptionCache;
+
+    public CallbackUrlCache(JsonCacheService<SubscriptionResource> subscriptionCache) {
+        this.subscriptionCache = subscriptionCache;
+    }
 
     /**
      * Retrieves the callback properties associated with the given subscriptionId.
      *
      * @param subscriptionId The subscriptionId for which to retrieve callback properties.
-     * @return The CallbackCacheProperties object associated with the subscriptionId, or null if not found.
+     * @return The DeliveryTargetInformation object associated with the subscriptionId, or null if not found.
      */
-    public CallbackCacheProperties get(String subscriptionId) {
-        return cache.get(subscriptionId);
-    }
 
-    /**
-     * Adds the callback properties for the specified subscriptionId in the cache.
-     *
-     * @param subscriptionId          The subscriptionId for which to add callback properties.
-     * @param callbackCacheProperties The CallbackCacheProperties object to be associated with the subscriptionId.
-     */
-    public void add(String subscriptionId, CallbackCacheProperties callbackCacheProperties) {
-        cache.put(subscriptionId, callbackCacheProperties);
-    }
+    public Optional<DeliveryTargetInformation> getDeliveryTargetInformation(String subscriptionId) {
 
-    /**
-     * Removes the callback properties associated with the given subscriptionId from the cache.
-     *
-     * @param subscriptionId The subscriptionId for which to remove callback properties.
-     */
-    public void remove(String subscriptionId) {
-        cache.remove(subscriptionId);
+        Optional<SubscriptionResource> subscription = Optional.empty();
+
+        try {
+            subscription = subscriptionCache.getByKey(subscriptionId);
+        } catch (JsonCacheException e) {
+            log.error("Error occurred while executing query on JsonCacheServe", e);
+
+        }
+
+        return subscription.map(subscriptionResource -> new DeliveryTargetInformation
+                (subscriptionResource.getSpec().getSubscription().getCallback(), subscriptionResource.getSpec().getSubscription().isCircuitBreakerOptOut()));
+
     }
 }
