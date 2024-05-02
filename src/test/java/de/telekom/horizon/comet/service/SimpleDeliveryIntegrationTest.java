@@ -14,6 +14,7 @@ import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.StatusMessage;
 import de.telekom.eni.pandora.horizon.model.meta.EventRetentionTime;
+import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
 import de.telekom.horizon.comet.test.utils.HorizonTestHelper;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -36,6 +37,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static de.telekom.horizon.comet.test.utils.WiremockStubs.stubOidc;
 import static de.telekom.horizon.comet.utils.MessageUtils.isStatusMessage;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 class SimpleDeliveryIntegrationTest extends AbstractIntegrationTest {
 
@@ -58,6 +61,9 @@ class SimpleDeliveryIntegrationTest extends AbstractIntegrationTest {
         final String callbackPath = "/callbacktest1";
         final String testHeader = "integrationtestheadervalue";
         final String traceId = UUID.randomUUID().toString();
+
+        when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, false)));
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.OK.value()))
