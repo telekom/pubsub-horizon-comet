@@ -105,18 +105,6 @@ public abstract class AbstractIntegrationTest {
         eventWriter.send(Objects.requireNonNullElse(message.getEventRetentionTime(), EventRetentionTime.DEFAULT).getTopic(), message).get();
     }
 
-    public void addTestSubscription(SubscriptionResource subscriptionResource) {
-        callbackUrlCache.getDeliveryTargetInformation(
-                subscriptionResource.getSpec().getSubscription().getSubscriptionId());
-                new DeliveryTargetInformation(subscriptionResource.getSpec().getSubscription().getCallback(), subscriptionResource.getSpec().getSubscription().isCircuitBreakerOptOut());
-    }
-
-//    public void addTestSubscription(SubscriptionResource subscriptionResource) {
-//        callbackUrlCache.add(
-//                subscriptionResource.getSpec().getSubscription().getSubscriptionId(),
-//                new CallbackCacheProperties(subscriptionResource.getSpec().getSubscription().getCallback(), subscriptionResource.getSpec().getSubscription().isCircuitBreakerOptOut()));
-//    }
-
     public ConsumerRecord<String, String> pollForRecord(int timeout, TimeUnit timeUnit) throws InterruptedException {
         return multiplexedRecordsMap.get(getEventType()).poll(timeout, timeUnit);
     }

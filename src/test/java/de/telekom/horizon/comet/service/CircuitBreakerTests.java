@@ -64,7 +64,6 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         SubscriptionResource subscriptionResource = HorizonTestHelper.createDefaultSubscriptionResource("playground", getEventType());
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCallback(wireMockServer.baseUrl() + callbackPath);
-        addTestSubscription(subscriptionResource);
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 
@@ -115,7 +114,6 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCircuitBreakerOptOut(true);
         subscriptionResource.getSpec().getSubscription().setCallback(wireMockServer.baseUrl() + callbackPath);
-        addTestSubscription(subscriptionResource);
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 
@@ -164,7 +162,6 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCircuitBreakerOptOut(false);
         subscriptionResource.getSpec().getSubscription().setCallback(wireMockServer.baseUrl() + callbackPath);
-        addTestSubscription(subscriptionResource);
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 

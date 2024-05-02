@@ -60,7 +60,6 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
         SubscriptionResource subscriptionResource = HorizonTestHelper.createDefaultSubscriptionResource("playground", getEventType());
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCallback(blankCallback);
-        addTestSubscription(subscriptionResource);
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 
@@ -107,7 +106,6 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
         SubscriptionResource subscriptionResource = HorizonTestHelper.createDefaultSubscriptionResource("playground", getEventType());
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCallback(wireMockServer.baseUrl() + callbackPath);
-        addTestSubscription(subscriptionResource);
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 
