@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
+import de.telekom.horizon.comet.cache.CallbackUrlCache;
+import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
@@ -47,6 +49,8 @@ public class RestClient {
     private final ObjectMapper objectMapper;
     private final ApplicationContext context;
 
+    private final CallbackUrlCache callbackUrlCache;
+
     /**
      * Construct of a new {@code RestClient} with the specified params.
      *
@@ -57,11 +61,12 @@ public class RestClient {
      * @param objectMapper The ObjectMapper instance for JSON serialization and deserialization.
      */
     @Autowired
-    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
+    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CallbackUrlCache callbackUrlCache,CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
 
         this.oAuth2TokenCache = oAuth2TokenCache;
+        this.callbackUrlCache = callbackUrlCache;
 
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
@@ -118,7 +123,7 @@ public class RestClient {
         request.setEntity(payload);
 
         // throws IOException
-        executeRequest(callbackUrl, request);
+        executeRequest(callbackUrl, request, subscriptionEventMessage);
     }
 
     /**
@@ -129,13 +134,19 @@ public class RestClient {
      * @throws IOException       If an IO error occurs during the HTTP request.
      * @throws CallbackException If the response status code is not acceptable.
      */
-    private void executeRequest(String callbackUrl, HttpPost request) throws IOException, CallbackException {
+    private void executeRequest(String callbackUrl, HttpPost request, SubscriptionEventMessage subscriptionEventMessage) throws IOException, CallbackException {
         try (var response = httpClient.execute(request)) {
             // Compare response status code with acceptable status codes from config
             var statusCode = response.getStatusLine().getStatusCode();
             var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
 
-            if (!successfulStatusCodes.contains(statusCode)) {
+            var retryableStatusCodesOptional = callbackUrlCache.
+                    getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId()).
+                    map(DeliveryTargetInformation::getRetryableStatusCodes);
+
+            var statusCodesToCheck = retryableStatusCodesOptional.orElse(successfulStatusCodes);
+
+            if (!statusCodesToCheck.contains(statusCode)) {
                 throw new CallbackException(String.format("Error while delivering event to callback '%s': %s", callbackUrl, response.getStatusLine().getReasonPhrase()), statusCode);
             }
         }
