@@ -126,7 +126,7 @@ public class DeliveryService implements DeliveryResultListener {
         var callbackUrlOrEmptyStr = getCallbackUrlOrEmptyStr(subscriptionEventMessage);
         // if callbackUrl is empty, we throw an CallbackUrlNotFoundException later, which gets handled
 
-        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, 0, 0, this, deliveryTaskFactory, null, messageSource, null);
+        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, 0, 0, this, deliveryTaskFactory, callbackUrlCache, null, messageSource, null);
         var deliveryTask = deliveryTaskFactory.createNew(deliveryTaskRecord);
 
         // Do not wait for thread
@@ -271,7 +271,7 @@ public class DeliveryService implements DeliveryResultListener {
                 eventUuid, backoffInterval, retryCount, cometConfig.getMaxRetries());
 
 
-        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, backoffInterval, retryCount, this, deliveryTaskFactory, deliverySpan, deliveryResult.messageSource(), null);
+        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, backoffInterval, retryCount, this, deliveryTaskFactory, callbackUrlCache, deliverySpan, deliveryResult.messageSource(), null);
         var redeliverTask = deliveryTaskFactory.createNew(deliveryTaskRecord);
         redeliveryTaskExecutor.submit(tracer.withCurrentTraceContext(redeliverTask));
         return true;

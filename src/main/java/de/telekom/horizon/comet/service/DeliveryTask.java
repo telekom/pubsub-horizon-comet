@@ -14,6 +14,8 @@ import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
+import de.telekom.horizon.comet.cache.CallbackUrlCache;
+import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.client.RestClient;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.config.CometMetrics;
@@ -64,6 +66,8 @@ public class DeliveryTask implements Runnable {
 
     private final CircuitBreakerCacheService circuitBreakerCacheService;
 
+    private final CallbackUrlCache callbackUrlCache;
+
     private final DeDuplicationService deDuplicationService;
 
     private final DeliveryResultListener deliveryResultListener;
@@ -92,6 +96,7 @@ public class DeliveryTask implements Runnable {
         this.metricsHelper = deliveryTaskRecord.deliveryTaskFactory().getMetricsHelper();
         this.cometMetrics = deliveryTaskRecord.deliveryTaskFactory().getCometMetrics();
         this.circuitBreakerCacheService = deliveryTaskRecord.deliveryTaskFactory().getCircuitBreakerCacheService();
+        this.callbackUrlCache = deliveryTaskRecord.callbackUrlCache();
         this.deDuplicationService = deliveryTaskRecord.deliveryTaskFactory().getDeDuplicationService();
         this.deliverySpan = deliveryTaskRecord.deliverySpan();
         this.messageSource = deliveryTaskRecord.messageSource();
@@ -245,7 +250,18 @@ public class DeliveryTask implements Runnable {
         var httpCode = callbackException.getStatusCode();
         writeHttpCodeMetricTags(httpCode);
 
-        boolean shouldRedeliver = cometConfig.getRedeliveryStatusCodes().contains(httpCode);
+        var retryableStatusCodesOptional = callbackUrlCache
+                .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
+                .map(DeliveryTargetInformation::getRetryableStatusCodes);
+
+        var statusCodesToCheck = retryableStatusCodesOptional.orElse(cometConfig.getRedeliveryStatusCodes());
+
+        boolean shouldRedeliver;
+        if (retryableStatusCodesOptional.isPresent()) {
+            shouldRedeliver = statusCodesToCheck.contains(httpCode);
+        } else {
+            shouldRedeliver = cometConfig.getRedeliveryStatusCodes().contains(httpCode);
+        }
 
         var exceptionCause = callbackException.getCause();
         writeCallbackExceptionInTrace(exceptionCause, httpCode, shouldRedeliver);

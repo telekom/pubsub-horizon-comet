@@ -123,7 +123,7 @@ public class RestClient {
         request.setEntity(payload);
 
         // throws IOException
-        executeRequest(callbackUrl, request, subscriptionEventMessage);
+        executeRequest(callbackUrl, request);
     }
 
     /**
@@ -134,19 +134,13 @@ public class RestClient {
      * @throws IOException       If an IO error occurs during the HTTP request.
      * @throws CallbackException If the response status code is not acceptable.
      */
-    private void executeRequest(String callbackUrl, HttpPost request, SubscriptionEventMessage subscriptionEventMessage) throws IOException, CallbackException {
+    private void executeRequest(String callbackUrl, HttpPost request) throws IOException, CallbackException {
         try (var response = httpClient.execute(request)) {
             // Compare response status code with acceptable status codes from config
             var statusCode = response.getStatusLine().getStatusCode();
             var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
 
-            var retryableStatusCodesOptional = callbackUrlCache.
-                    getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId()).
-                    map(DeliveryTargetInformation::getRetryableStatusCodes);
-
-            var statusCodesToCheck = retryableStatusCodesOptional.orElse(successfulStatusCodes);
-
-            if (!statusCodesToCheck.contains(statusCode)) {
+            if (!successfulStatusCodes.contains(statusCode)) {
                 throw new CallbackException(String.format("Error while delivering event to callback '%s': %s", callbackUrl, response.getStatusLine().getReasonPhrase()), statusCode);
             }
         }
