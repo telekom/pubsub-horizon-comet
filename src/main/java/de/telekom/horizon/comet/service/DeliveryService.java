@@ -284,7 +284,7 @@ public class DeliveryService implements DeliveryResultListener {
      */
     private void openCircuitBreaker(SubscriptionEventMessage subscriptionEventMessage) {
         circuitBreakerCacheService.openCircuitBreaker(subscriptionEventMessage.getSubscriptionId(),
-                getCallbackUrlOrEmptyStr(subscriptionEventMessage),
+                subscriptionEventMessage.getUuid(),
                 subscriptionEventMessage.getEnvironment());
     }
 }
