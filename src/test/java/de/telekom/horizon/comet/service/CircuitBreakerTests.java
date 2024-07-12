@@ -165,7 +165,7 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 
-        circuitBreakerCacheService.openCircuitBreaker(subscriptionId, wireMockServer.baseUrl() + callbackPath, "playground");
+        circuitBreakerCacheService.openCircuitBreaker(subscriptionId, "my.example.event.v1", wireMockServer.baseUrl() + callbackPath, "playground");
 
         // when
         assertDoesNotThrow(() -> simulateNewPublishedEvent(subscriptionMessage));

@@ -62,10 +62,11 @@ public class CircuitBreakerCacheService {
      * @param environment    The environment for which to open the circuit breaker.
      * @throws HazelcastInstanceNotActiveException if the hazelcast instance is not active
      */
-    public void openCircuitBreaker(String subscriptionId, String originMessageId, String environment) throws HazelcastInstanceNotActiveException {
+    public void openCircuitBreaker(String subscriptionId, String eventType, String originMessageId, String environment) throws HazelcastInstanceNotActiveException {
         try {
             var circuitBreakerMessage = new CircuitBreakerMessage(
                     subscriptionId,
+                    eventType,
                     Date.from(Instant.now()),
                     originMessageId,
                     CircuitBreakerStatus.OPEN,

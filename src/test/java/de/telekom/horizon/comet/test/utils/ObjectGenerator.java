@@ -18,6 +18,7 @@ import java.util.Map;
 public class ObjectGenerator {
 
     public final static String TEST_SUBSCRIPTION_TOPIC = "subscribed";
+    public final static String TEST_EVENT_TYPE = "my.example.event.v1";
     public final static String TEST_SUBSCRIPTION_ID = "123-456-789";
     public final static String TEST_EVENT_ID = "336d55df-86ff-4529-a2df-92b66a124465";
     public final static String TEST_ENVIRONMENT = "bond";

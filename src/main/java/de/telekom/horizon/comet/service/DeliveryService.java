@@ -283,7 +283,9 @@ public class DeliveryService implements DeliveryResultListener {
      * @param subscriptionEventMessage The SubscriptionEventMessage for which to open the circuit breaker.
      */
     private void openCircuitBreaker(SubscriptionEventMessage subscriptionEventMessage) {
-        circuitBreakerCacheService.openCircuitBreaker(subscriptionEventMessage.getSubscriptionId(),
+        circuitBreakerCacheService.openCircuitBreaker(
+                subscriptionEventMessage.getSubscriptionId(),
+                subscriptionEventMessage.getEvent().getType(),
                 subscriptionEventMessage.getUuid(),
                 subscriptionEventMessage.getEnvironment());
     }

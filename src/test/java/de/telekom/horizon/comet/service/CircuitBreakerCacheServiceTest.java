@@ -38,7 +38,7 @@ class CircuitBreakerCacheServiceTest {
     @Test
     @DisplayName("Write CircuitBreakerMessage in Cache")
     void writeCircuitBreakerMessage() throws JsonCacheException {
-        circuitBreakerCacheService.openCircuitBreaker(ObjectGenerator.TEST_SUBSCRIPTION_ID, "test", ObjectGenerator.TEST_ENVIRONMENT);
+        circuitBreakerCacheService.openCircuitBreaker(ObjectGenerator.TEST_SUBSCRIPTION_ID, ObjectGenerator.TEST_EVENT_TYPE, "test", ObjectGenerator.TEST_ENVIRONMENT);
 
         verify(cacheService, times(1)).set(eq(ObjectGenerator.TEST_SUBSCRIPTION_ID), any());
     }
@@ -48,6 +48,7 @@ class CircuitBreakerCacheServiceTest {
     void returnTrueWhenCircuitBreakerOpen() throws JsonCacheException {
         var circuitBreakerMessage = new CircuitBreakerMessage(
                 ObjectGenerator.TEST_SUBSCRIPTION_ID,
+                ObjectGenerator.TEST_EVENT_TYPE,
                 Date.from(Instant.now()),
                 "test",
                 CircuitBreakerStatus.OPEN,
