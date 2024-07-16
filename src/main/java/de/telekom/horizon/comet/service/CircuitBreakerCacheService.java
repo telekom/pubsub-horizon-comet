@@ -43,8 +43,6 @@ public class CircuitBreakerCacheService {
      */
     public boolean isCircuitBreakerOpenOrChecking(String subscriptionId) throws HazelcastInstanceNotActiveException {
         try {
-            log.debug("Try to get CircuitBreakerMessage for SubscriptionId {}", subscriptionId);
-            log.debug("Result, so the circuitBreakerMessage for SubscriptionId {} is : {}", subscriptionId, circuitBreakerCache.getByKey(subscriptionId));
             var result = circuitBreakerCache.getByKey(subscriptionId);
             if (result.isPresent()) {
                 CircuitBreakerMessage circuitBreakerMessage = result.get();
@@ -52,6 +50,7 @@ public class CircuitBreakerCacheService {
             }
         } catch (JsonCacheException e) {
             log.error("Could not check status of circuit breaker for subscriptionId {}: {}", subscriptionId, e.getMessage());
+            e.printStackTrace();
         }
         return false;
     }
