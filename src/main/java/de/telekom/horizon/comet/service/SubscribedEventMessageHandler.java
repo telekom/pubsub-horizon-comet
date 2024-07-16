@@ -117,19 +117,23 @@ public class SubscribedEventMessageHandler {
      * @return CompletableFuture with SendResult based on event handling outcome.
      */
     public CompletableFuture<SendResult<String, String>> handleEvent(SubscriptionEventMessage subscriptionEventMessage, Span rootSpan, HorizonComponentId messageSource) {
+        log.warn("Check circuitBreaker for subscriptionId {}", subscriptionEventMessage.getSubscriptionId());
         if (isCircuitBreakerOpenOrChecking(subscriptionEventMessage)) {
             rootSpan.annotate("Circuit Breaker open! Set event on WAITING");
             return stateService.updateState(Status.WAITING, subscriptionEventMessage, null);
         }
 
+        log.warn("Check deduplication for subscriptionId {}", subscriptionEventMessage.getSubscriptionId());
         try {
             String msgUuidOrNull = deDuplicationService.get(subscriptionEventMessage);
             boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
             if (isDuplicate) {
+                log.warn("Event with id {} is a duplicate. Check if it is the same event.", subscriptionEventMessage.getUuid());
                 // circuit breaker is not open AND event is a duplicate
                 return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
             }
         } catch (HazelcastInstanceNotActiveException ex) {
+            log.warn("HazelcastInstanceNotActiveException occurred while checking for duplicate event with uuid {}. Event will be delivered anyways.", subscriptionEventMessage.getUuid(), ex);
             log.error("HazelcastInstanceNotActiveException occurred while checking for duplicate event with uuid {}. Event will be delivered anyways.", subscriptionEventMessage.getUuid(), ex);
             rootSpan.annotate("HazelcastInstanceNotActiveException occurred while checking for duplicate event. Event will be delivered anyways.");
             rootSpan.error(ex);
@@ -158,6 +162,7 @@ public class SubscribedEventMessageHandler {
      * @return CompletableFuture for the DELIVERING status sending
      */
     private CompletableFuture<SendResult<String, String>> deliverEvent(SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId clientId){
+        log.warn("Set event to DELIVERING and start delivery for subscriptionId {}", subscriptionEventMessage.getSubscriptionId());
         CompletableFuture<SendResult<String, String>> afterStatusSendFuture = stateService.updateState(Status.DELIVERING, subscriptionEventMessage, null);
         cometMetrics.recordE2eEventLatencyAndExtendMetadata(subscriptionEventMessage, MetricNames.EndToEndLatencyTardis, clientId);
         deliveryService.deliver(subscriptionEventMessage, clientId); // Starts async task in pool
