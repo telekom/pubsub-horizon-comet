@@ -84,7 +84,7 @@ public class SubscribedEventMessageHandler {
      * @throws JsonProcessingException If there is an error processing the JSON.
      */
     public CompletableFuture<SendResult<String, String>> handleMessage(ConsumerRecord<String, String> consumerRecord) throws JsonProcessingException {
-        log.debug("Start handling message with id {}", consumerRecord.key());
+        log.warn("Start handling message with id {}", consumerRecord.key());
         var subscriptionEventMessage = objectMapper.readValue(consumerRecord.value(), SubscriptionEventMessage.class);
 
         DeliveryType deliveryType = subscriptionEventMessage.getDeliveryType();
@@ -98,6 +98,7 @@ public class SubscribedEventMessageHandler {
         var rootSpan = tracer.startSpanFromKafkaHeaders("consume subscribed message", consumerRecord.headers());
         var rootSpanInScope = tracer.withSpanInScope(rootSpan); // try-with-resources not possible because scope closes after try -> we need context in catch
 
+        log.warn("Start to handle Event with id {}", subscriptionEventMessage.getSubscriptionId());
         afterStatusSendFuture = handleEvent(subscriptionEventMessage, rootSpan, clientId);
 
         log.debug("Finished handling message with id {}", consumerRecord.key());
