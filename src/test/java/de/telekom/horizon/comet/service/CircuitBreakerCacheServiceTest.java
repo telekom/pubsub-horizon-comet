@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -20,8 +21,7 @@ import java.time.Instant;
 import java.util.Date;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,9 +38,30 @@ class CircuitBreakerCacheServiceTest {
     @Test
     @DisplayName("Write CircuitBreakerMessage in Cache")
     void writeCircuitBreakerMessage() throws JsonCacheException {
+        var circuitBreakerMessage = new CircuitBreakerMessage(
+                ObjectGenerator.TEST_SUBSCRIPTION_ID,
+                ObjectGenerator.TEST_EVENT_TYPE,
+                Date.from(Instant.now()),
+                "test",
+                CircuitBreakerStatus.OPEN,
+                ObjectGenerator.TEST_ENVIRONMENT,
+                Date.from(Instant.now().minusSeconds(1)),
+                1
+        );
+        when(cacheService.getByKey(eq(ObjectGenerator.TEST_SUBSCRIPTION_ID))).thenReturn(Optional.of(circuitBreakerMessage));
+
         circuitBreakerCacheService.openCircuitBreaker(ObjectGenerator.TEST_SUBSCRIPTION_ID, ObjectGenerator.TEST_EVENT_TYPE, "test", ObjectGenerator.TEST_ENVIRONMENT);
 
-        verify(cacheService, times(1)).set(eq(ObjectGenerator.TEST_SUBSCRIPTION_ID), any());
+        verify(cacheService, times(1)).getByKey(eq(ObjectGenerator.TEST_SUBSCRIPTION_ID));
+
+        ArgumentCaptor<CircuitBreakerMessage> captor = ArgumentCaptor.forClass(CircuitBreakerMessage.class);
+        verify(cacheService, times(1)).set(eq(ObjectGenerator.TEST_SUBSCRIPTION_ID), captor.capture());
+
+        CircuitBreakerMessage capturedMessage = captor.getValue();
+        // Check if the loop counter is taken from the existing circuit breaker message
+        assertEquals(circuitBreakerMessage.getLoopCounter(), capturedMessage.getLoopCounter());
+       // Check if the last opened date is after the existing circuit breaker message date
+        assertTrue(capturedMessage.getLastOpened().after(circuitBreakerMessage.getLastOpened()));
     }
 
     @Test

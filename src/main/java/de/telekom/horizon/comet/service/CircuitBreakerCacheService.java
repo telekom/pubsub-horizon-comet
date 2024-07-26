@@ -57,25 +57,32 @@ public class CircuitBreakerCacheService {
 
     /**
      * Opens the circuit breaker associated with the given subscriptionId, providing the callback URL
-     * and environment information.
+     * and environment information. If the circuit breaker message is already present, the republishing
+     * count is taken from the existing circuit breaker message.
      *
      * @param subscriptionId The subscriptionId for which to open the circuit breaker.
      * @param environment    The environment for which to open the circuit breaker.
      * @throws HazelcastInstanceNotActiveException if the hazelcast instance is not active
      */
     public void openCircuitBreaker(String subscriptionId, String eventType, String originMessageId, String environment) throws HazelcastInstanceNotActiveException {
+        var newCircuitBreakerMessage = new CircuitBreakerMessage(
+                subscriptionId,
+                eventType,
+                Date.from(Instant.now()),
+                originMessageId,
+                CircuitBreakerStatus.OPEN,
+                environment,
+                Date.from(Instant.now()),
+                0
+        );
         try {
-            var circuitBreakerMessage = new CircuitBreakerMessage(
-                    subscriptionId,
-                    eventType,
-                    Date.from(Instant.now()),
-                    originMessageId,
-                    CircuitBreakerStatus.OPEN,
-                    environment,
-                    null,
-                    0
-            );
-            circuitBreakerCache.set(subscriptionId, circuitBreakerMessage);
+            var result = circuitBreakerCache.getByKey(subscriptionId);
+
+            if (result.isPresent()) {
+                CircuitBreakerMessage existingCircuitBreakerMessage = result.get();
+                newCircuitBreakerMessage.setLoopCounter(existingCircuitBreakerMessage.getLoopCounter());
+            }
+            circuitBreakerCache.set(subscriptionId, newCircuitBreakerMessage);
         } catch (JsonCacheException e) {
             log.error("Could not open circuit breaker for subscriptionId {}: {}", subscriptionId, e.getMessage());
         }
