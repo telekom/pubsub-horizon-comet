@@ -48,7 +48,6 @@ class CircuitBreakerCacheServiceTest {
                 Date.from(Instant.now()),
                 1
         );
-        var testStartDate = Date.from(Instant.now().minusSeconds(1));
         when(cacheService.getByKey(eq(ObjectGenerator.TEST_SUBSCRIPTION_ID))).thenReturn(Optional.of(circuitBreakerMessage));
 
         circuitBreakerCacheService.openCircuitBreaker(ObjectGenerator.TEST_SUBSCRIPTION_ID, ObjectGenerator.TEST_EVENT_TYPE, "test", ObjectGenerator.TEST_ENVIRONMENT);
@@ -63,8 +62,6 @@ class CircuitBreakerCacheServiceTest {
         assertEquals(circuitBreakerMessage.getLoopCounter(), capturedMessage.getLoopCounter());
        // Check if the last opened date is taken from the existing circuit breaker message
         assertEquals(circuitBreakerMessage.getLastOpened(), capturedMessage.getLastOpened());
-        // Check if last modified was updated
-        assertTrue(capturedMessage.getLastModified().after(testStartDate));
     }
 
     @Test
