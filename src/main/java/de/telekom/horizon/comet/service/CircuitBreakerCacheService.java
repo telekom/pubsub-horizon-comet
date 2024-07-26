@@ -58,7 +58,7 @@ public class CircuitBreakerCacheService {
     /**
      * Opens the circuit breaker associated with the given subscriptionId, providing the callback URL
      * and environment information. If the circuit breaker message is already present, the republishing
-     * count is taken from the existing circuit breaker message.
+     * count and the last opened is taken from the existing circuit breaker message.
      *
      * @param subscriptionId The subscriptionId for which to open the circuit breaker.
      * @param environment    The environment for which to open the circuit breaker.
@@ -81,6 +81,7 @@ public class CircuitBreakerCacheService {
             if (result.isPresent()) {
                 CircuitBreakerMessage existingCircuitBreakerMessage = result.get();
                 newCircuitBreakerMessage.setLoopCounter(existingCircuitBreakerMessage.getLoopCounter());
+                newCircuitBreakerMessage.setLastOpened(existingCircuitBreakerMessage.getLastOpened());
             }
             circuitBreakerCache.set(subscriptionId, newCircuitBreakerMessage);
         } catch (JsonCacheException e) {
