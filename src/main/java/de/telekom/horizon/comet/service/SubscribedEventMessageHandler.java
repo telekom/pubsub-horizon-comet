@@ -135,13 +135,19 @@ public class SubscribedEventMessageHandler {
             if (isDuplicate) {
                 log.warn("Event with id {} is a duplicate. Check if it is the same event.", subscriptionEventMessage.getUuid());
 
-                var additionalFields = Objects.requireNonNullElse(subscriptionEventMessage.getAdditionalFields(), new HashMap<>());
-                var replicatedFromOrNull = (String) additionalFields.get("replicatedFrom");
+                if (Objects.equals(subscriptionEventMessage.getUuid(), msgUuidOrNull)) {
+                    var additionalFields = Objects.requireNonNullElse(subscriptionEventMessage.getAdditionalFields(), new HashMap<>());
+                    var replicatedFromOrNull = (String) additionalFields.get("replicatedFrom");
 
-                if (replicatedFromOrNull == null) {
-                    return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
+                    if (replicatedFromOrNull == null) {
+                        log.debug("Message with id {} was found in the deduplication cache with the same UUID. Message will be ignored, because status will probably set to DELIVERED in the next minutes.", subscriptionEventMessage.getUuid());
+                    } else {
+                        log.debug("Message with id {} was found in the deduplication cache with the same UUID and has a replicatedFrom field. Delivering event normally.", subscriptionEventMessage.getUuid());
+                        return deliverEvent(subscriptionEventMessage, messageSource);
+                    }
                 } else {
-                    log.warn("Event with id {} is not considered a duplicate because it has a replicatedFrom field.", subscriptionEventMessage.getUuid());
+                    log.debug("Message with id {} was found in the deduplication cache with a different UUID. Message will be set to DUPLICATE to prevent event being stuck at PROCESSED.", subscriptionEventMessage.getUuid());
+                    return handleDuplicateEvent(subscriptionEventMessage);
                 }
             }
         } catch (HazelcastInstanceNotActiveException ex) {
@@ -186,20 +192,10 @@ public class SubscribedEventMessageHandler {
      * Handles a duplicate subscription event and updates status accordingly.
      *
      * @param subscriptionEventMessage The SubscriptionEventMessage to handle.
-     * @param msgUuidOrNull            The UUID of the duplicate message.
      * @return CompletableFuture with SendResult based on event handling outcome.
      */
-    private CompletableFuture<SendResult<String, String>> handleDuplicateEvent(SubscriptionEventMessage subscriptionEventMessage, String msgUuidOrNull) {
-        CompletableFuture<SendResult<String, String>> afterStatusSendFuture = null;
-
-        if(Objects.equals(subscriptionEventMessage.getUuid(), msgUuidOrNull)) {
-            log.debug("Message with id {} was found in the deduplication cache with the same UUID. Message will be ignored, because status will probably set to DELIVERED in the next minutes.", subscriptionEventMessage.getUuid());
-        } else {
-            log.debug("Message with id {} was found in the deduplication cache with another UUID. Message will be set to DUPLICATE to prevent event being stuck at PROCESSED.", subscriptionEventMessage.getUuid());
-            afterStatusSendFuture =  stateService.updateState(Status.DUPLICATE, subscriptionEventMessage, null);
-        }
-
-        return afterStatusSendFuture;
+    private CompletableFuture<SendResult<String, String>> handleDuplicateEvent(SubscriptionEventMessage subscriptionEventMessage) {
+        log.debug("Message with id {} was found in the deduplication cache with another UUID. Message will be set to DUPLICATE to prevent event being stuck at PROCESSED.", subscriptionEventMessage.getUuid());
+        return stateService.updateState(Status.DUPLICATE, subscriptionEventMessage, null);
     }
-
 }
