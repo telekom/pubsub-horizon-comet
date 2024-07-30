@@ -127,6 +127,7 @@ public class SubscribedEventMessageHandler {
         log.warn("Check deduplication for subscriptionId {}", subscriptionEventMessage.getSubscriptionId());
         try {
             String msgUuidOrNull = deDuplicationService.get(subscriptionEventMessage);
+            log.warn("Deduplication check for subscriptionId {} returned {}", subscriptionEventMessage.getSubscriptionId(), msgUuidOrNull);
             boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
             if (isDuplicate) {
                 log.warn("Event with id {} is a duplicate. Check if it is the same event.", subscriptionEventMessage.getUuid());
