@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
@@ -128,11 +129,20 @@ public class SubscribedEventMessageHandler {
         try {
             String msgUuidOrNull = deDuplicationService.get(subscriptionEventMessage);
             log.warn("Deduplication check for subscriptionId {} returned {}", subscriptionEventMessage.getSubscriptionId(), msgUuidOrNull);
+
             boolean isDuplicate = Objects.nonNull(msgUuidOrNull);
+
             if (isDuplicate) {
                 log.warn("Event with id {} is a duplicate. Check if it is the same event.", subscriptionEventMessage.getUuid());
-                // circuit breaker is not open AND event is a duplicate
-                return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
+
+                var additionalFields = Objects.requireNonNullElse(subscriptionEventMessage.getAdditionalFields(), new HashMap<>());
+                var replicatedFromOrNull = (String) additionalFields.get("replicatedFrom");
+
+                if (replicatedFromOrNull == null) {
+                    return handleDuplicateEvent(subscriptionEventMessage, msgUuidOrNull);
+                } else {
+                    log.warn("Event with id {} is not considered a duplicate because it has a replicatedFrom field.", subscriptionEventMessage.getUuid());
+                }
             }
         } catch (HazelcastInstanceNotActiveException ex) {
             log.warn("HazelcastInstanceNotActiveException occurred while checking for duplicate event with uuid {}. Event will be delivered anyways.", subscriptionEventMessage.getUuid(), ex);
