@@ -25,6 +25,10 @@ public class DeliveryTargetInformation {
      */
     private String url;
 
+    /**
+     * The delivery type of the subscription.
+     */
+    private String deliveryType;
 
     /**
      * A boolean flag indicating whether the associated callback should active or deactivate the circuit breaker.

@@ -97,7 +97,7 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
         final String callbackPath = "/duplicate";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, false, null)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", false, null)));
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.OK.value()))

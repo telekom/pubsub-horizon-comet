@@ -13,6 +13,7 @@ import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.config.CometConfig;
+import de.telekom.horizon.comet.exception.CallbackUrlNotFoundException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import de.telekom.horizon.comet.model.DeliveryResult;
 import de.telekom.horizon.comet.model.DeliveryTaskRecord;
@@ -186,6 +187,15 @@ public class DeliveryService implements DeliveryResultListener {
         try (var ignored = tracer.withSpanInScope(deliveryResult.deliverySpan())) {
             var afterSendFuture = stateService.updateState(status, subscriptionEventMessage, deliveryResult.exception());
             if (status.equals(Status.DELIVERED) || status.equals(Status.FAILED)) {
+                var deliveryTypeOfSubscription = callbackUrlCache
+                        .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
+                        .map(DeliveryTargetInformation::getDeliveryType);
+
+                if (status.equals(Status.FAILED) && deliveryTypeOfSubscription.isPresent() && (deliveryTypeOfSubscription.get().equals("sse") ||
+                        deliveryTypeOfSubscription.get().equals("server_sent_event")) && deliveryResult.exception() instanceof CallbackUrlNotFoundException) {
+                    return;
+                }
+
                 afterSendFuture.thenAccept(result -> trackEventForDeduplication(subscriptionEventMessage));
             }
         } finally {
