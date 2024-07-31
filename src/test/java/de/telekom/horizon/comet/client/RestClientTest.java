@@ -7,6 +7,7 @@ package de.telekom.horizon.comet.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
+import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
@@ -44,6 +45,8 @@ class RestClientTest extends AbstractIntegrationTest {
     @Mock
     OAuth2TokenCache oAuth2TokenCache;
     @Mock
+    CallbackUrlCache callbackUrlCache;
+    @Mock
     CloseableHttpClient closeableHttpClient;
     @Mock
     CloseableHttpResponse closeableHttpResponse;
@@ -59,7 +62,7 @@ class RestClientTest extends AbstractIntegrationTest {
         when(cometConfig.getHeaderPropagationBlacklist()).thenReturn(List.of("x-spacegate-token","authorization","content-length","host","accept.*","x-forwarded.*"));
         when(closeableHttpResponse.getStatusLine()).thenReturn(statusLine);
         when(closeableHttpClient.execute(any())).thenReturn(closeableHttpResponse);
-        this.restClient = spy(new RestClient(cometConfig, horizonTracer, oAuth2TokenCache, closeableHttpClient, new ObjectMapper(), context));
+        this.restClient = spy(new RestClient(cometConfig, horizonTracer, oAuth2TokenCache, callbackUrlCache, closeableHttpClient, new ObjectMapper(), context));
     }
 
     @ParameterizedTest(name = "Check Header for {0}")

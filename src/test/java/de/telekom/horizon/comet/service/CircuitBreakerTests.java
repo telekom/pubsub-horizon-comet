@@ -55,7 +55,7 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String callbackPath = "/callbacktest2";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, false)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, false, null)));
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.valueOf(status).value()))
@@ -104,7 +104,7 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String callbackPath = "/callbacktest3";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, true)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, true, null)));
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.valueOf(status).value()))
@@ -152,7 +152,7 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String callbackPath = "/callbacktest5";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, true)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, true, null)));
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.OK.value()))
