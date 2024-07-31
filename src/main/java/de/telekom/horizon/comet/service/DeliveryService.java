@@ -191,8 +191,15 @@ public class DeliveryService implements DeliveryResultListener {
                         .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
                         .map(DeliveryTargetInformation::getDeliveryType);
 
-                if (status.equals(Status.FAILED) && deliveryTypeOfSubscription.isPresent() && (deliveryTypeOfSubscription.get().equals("sse") ||
-                        deliveryTypeOfSubscription.get().equals("server_sent_event")) && deliveryResult.exception() instanceof CallbackUrlNotFoundException) {
+                log.warn("Event with id {} and deliveryType {} and error {} was skipped by deduplication",
+                        subscriptionEventMessage.getUuid(),
+                        deliveryTypeOfSubscription.orElse("unknown"),
+                        deliveryResult.exception() != null ? deliveryResult.exception().getMessage() : "no error");
+
+                if (status == Status.FAILED
+                        && deliveryTypeOfSubscription.isPresent()
+                        && (deliveryTypeOfSubscription.get().equals("sse") || deliveryTypeOfSubscription.get().equals("server_sent_event"))
+                        && deliveryResult.exception() instanceof CallbackUrlNotFoundException) {
                     return;
                 }
 
