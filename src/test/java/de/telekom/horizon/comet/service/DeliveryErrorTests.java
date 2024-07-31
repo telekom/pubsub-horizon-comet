@@ -55,7 +55,7 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
         final String blankCallback = "";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + blankCallback, false, null)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + blankCallback, "callback", false, null)));
 
         SubscriptionResource subscriptionResource = HorizonTestHelper.createDefaultSubscriptionResource("playground", getEventType());
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
