@@ -73,7 +73,7 @@ management:
 horizon:
   cache:
     enabled: true
-    kubernetesServiceDns: ${COMET_CACHE_SERVICE_DNS:app-cache-headless.example.svc.cluster.local}
+    kubernetesServiceDns: ${COMET_CACHE_SERVICE_DNS:horizon-quasar-discovery-headless.integration.svc.cluster.local}
     deDuplication:
       enabled: ${COMET_CACHE_DE_DUPLICATION_ENABLED:false}
       defaultCacheName: comet-deduplication

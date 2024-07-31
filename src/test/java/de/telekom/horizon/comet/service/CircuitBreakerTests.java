@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.kubernetes.resource.SubscriptionResource;
 import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.StatusMessage;
+import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
 import de.telekom.horizon.comet.test.utils.HorizonTestHelper;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -21,6 +22,7 @@ import org.springframework.http.HttpStatus;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -28,6 +30,8 @@ import static de.telekom.horizon.comet.test.utils.WiremockStubs.stubOidc;
 import static de.telekom.horizon.comet.utils.MessageUtils.isStatusMessage;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 class CircuitBreakerTests extends AbstractIntegrationTest {
 
@@ -50,6 +54,9 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String subscriptionId = "opencircuit-"+status;
         final String callbackPath = "/callbacktest2";
 
+        when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, false)));
+
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.valueOf(status).value()))
         );
@@ -57,7 +64,6 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         SubscriptionResource subscriptionResource = HorizonTestHelper.createDefaultSubscriptionResource("playground", getEventType());
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCallback(wireMockServer.baseUrl() + callbackPath);
-        addTestSubscription(subscriptionResource);
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 
@@ -97,6 +103,9 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String subscriptionId = "opencircuit-bypass-"+status;
         final String callbackPath = "/callbacktest3";
 
+        when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, true)));
+
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.valueOf(status).value()))
         );
@@ -105,7 +114,6 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCircuitBreakerOptOut(true);
         subscriptionResource.getSpec().getSubscription().setCallback(wireMockServer.baseUrl() + callbackPath);
-        addTestSubscription(subscriptionResource);
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 
@@ -143,6 +151,9 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String subscriptionId = "opencircuit-dontsend";
         final String callbackPath = "/callbacktest5";
 
+        when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, true)));
+
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.OK.value()))
         );
@@ -151,7 +162,6 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
         subscriptionResource.getSpec().getSubscription().setCircuitBreakerOptOut(false);
         subscriptionResource.getSpec().getSubscription().setCallback(wireMockServer.baseUrl() + callbackPath);
-        addTestSubscription(subscriptionResource);
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 

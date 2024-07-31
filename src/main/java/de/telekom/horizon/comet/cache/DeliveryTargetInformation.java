@@ -10,13 +10,13 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * The {@code CallbackCacheProperties} class represents properties associated with callbackUrls, including the url
+ * The {@code DeliveryTargetInformation} class represents properties associated with callbackUrls, including the url
  * itself and an indicator to active or deactivate the circuit breaker.
  */
 @Getter
 @Setter
 @AllArgsConstructor
-public class CallbackCacheProperties {
+public class DeliveryTargetInformation {
 
     /**
      * The url to be called when a callback is triggered.
