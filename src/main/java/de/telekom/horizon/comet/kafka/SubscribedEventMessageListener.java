@@ -21,6 +21,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static de.telekom.horizon.comet.utils.MessageUtils.isStatusMessage;
 
@@ -77,9 +78,11 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
     @Override
     public void onMessage(@NotNull List<ConsumerRecord<String, String>> records, @NotNull Acknowledgment acknowledgment) {
         List<String> eventUuids = records.stream().map(ConsumerRecord::key).toList();
-
         try {
-            records.forEach(record -> onMessage(record).join());
+            var afterDeliveringSendFutures = records.stream().map(this::onMessage).filter(Objects::nonNull).toList();
+            var sendFuturesArray = afterDeliveringSendFutures.toArray(new CompletableFuture[0]);
+            log.debug("Create sendFutureArray {} of list {}", sendFuturesArray, afterDeliveringSendFutures);
+            CompletableFuture.allOf(sendFuturesArray).join();
         } catch (Exception ex) {
             log.error("Exception thrown while handling events with ids [{}]. Nacking batch.", eventUuids, ex);
             acknowledgment.nack(Duration.of(5000, ChronoUnit.MILLIS));
