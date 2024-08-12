@@ -55,7 +55,9 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String callbackPath = "/callbacktest2";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", false, null)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", false, null))
+        );
+
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.valueOf(status).value()))
@@ -104,7 +106,8 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String callbackPath = "/callbacktest3";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", true, null)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", true, null))
+        );
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.valueOf(status).value()))
@@ -151,8 +154,10 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String subscriptionId = "opencircuit-dontsend";
         final String callbackPath = "/callbacktest5";
 
-        when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", false, null)));
+        when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(
+                Optional.of(new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", false, null))
+        );
+
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.OK.value()))
