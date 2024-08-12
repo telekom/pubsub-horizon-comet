@@ -55,7 +55,7 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
             return null;
         }
 
-        log.warn("Received (message) ({}) record at partition {} and offset {} in topic {} with record id {}", MessageType.MESSAGE, record.partition(), record.offset(), record.topic(), record.key());
+        log.debug("Received (message) ({}) record at partition {} and offset {} in topic {} with record id {}", MessageType.MESSAGE, record.partition(), record.offset(), record.topic(), record.key());
 
         try {
             return subscribedEventMessageHandler.handleMessage(record);
@@ -77,12 +77,9 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
     @Override
     public void onMessage(@NotNull List<ConsumerRecord<String, String>> records, @NotNull Acknowledgment acknowledgment) {
         List<String> eventUuids = records.stream().map(ConsumerRecord::key).toList();
-        log.warn("Received batch of records with event ids [{}]", eventUuids);
+
         try {
-            var afterDeliveringSendFutures = records.stream().map(this::onMessage).filter(Objects::nonNull).map(CompletableFuture::completedFuture).toList();
-            var sendFuturesArray = afterDeliveringSendFutures.toArray(new CompletableFuture[0]);
-            log.debug("Create sendFutureArray {} of list {}", sendFuturesArray, afterDeliveringSendFutures);
-            CompletableFuture.allOf(sendFuturesArray).join();
+            records.forEach(record -> onMessage(record).join());
         } catch (Exception ex) {
             log.error("Exception thrown while handling events with ids [{}]. Nacking batch.", eventUuids, ex);
             acknowledgment.nack(Duration.of(5000, ChronoUnit.MILLIS));
