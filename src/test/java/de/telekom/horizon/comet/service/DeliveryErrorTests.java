@@ -55,7 +55,8 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
         final String blankCallback = "";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + blankCallback, false, null)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + blankCallback, "callback", false, null))
+        );
 
         SubscriptionResource subscriptionResource = HorizonTestHelper.createDefaultSubscriptionResource("playground", getEventType());
         subscriptionResource.getSpec().getSubscription().setSubscriptionId(subscriptionId);
@@ -97,7 +98,8 @@ class DeliveryErrorTests extends AbstractIntegrationTest {
         final String callbackPath = "/duplicate";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, false, null)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", false, null))
+        );
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.OK.value()))

@@ -52,6 +52,7 @@ public class CallbackUrlCache {
 
         return subscription.map(subscriptionResource -> new DeliveryTargetInformation
                 (subscriptionResource.getSpec().getSubscription().getCallback(),
+                        subscriptionResource.getSpec().getSubscription().getDeliveryType(),
                         subscriptionResource.getSpec().getSubscription().isCircuitBreakerOptOut(),
                         subscriptionResource.getSpec().getSubscription().getRetryableStatusCodes()));
 

@@ -55,7 +55,9 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String callbackPath = "/callbacktest2";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, false, null)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", false, null))
+        );
+
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.valueOf(status).value()))
@@ -104,7 +106,8 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String callbackPath = "/callbacktest3";
 
         when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, true, null)));
+                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", true, null))
+        );
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.valueOf(status).value()))
@@ -151,8 +154,10 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         final String subscriptionId = "opencircuit-dontsend";
         final String callbackPath = "/callbacktest5";
 
-        when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(Optional.of(
-                new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, true, null)));
+        when(callbackUrlCache.getDeliveryTargetInformation(any())).thenReturn(
+                Optional.of(new DeliveryTargetInformation(wireMockServer.baseUrl() + callbackPath, "callback", false, null))
+        );
+
 
         wireMockServer.stubFor(
                 post(callbackPath).willReturn(aResponse().withStatus(HttpStatus.OK.value()))
@@ -165,7 +170,7 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage(subscriptionId, getEventType());
 
-        circuitBreakerCacheService.openCircuitBreaker(subscriptionId, wireMockServer.baseUrl() + callbackPath, "playground");
+        circuitBreakerCacheService.openCircuitBreaker(subscriptionId, "my.example.event.v1", wireMockServer.baseUrl() + callbackPath, "playground");
 
         // when
         assertDoesNotThrow(() -> simulateNewPublishedEvent(subscriptionMessage));
