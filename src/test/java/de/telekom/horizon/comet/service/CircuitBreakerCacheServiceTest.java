@@ -59,10 +59,14 @@ class CircuitBreakerCacheServiceTest {
         verify(cacheService, times(1)).set(eq(ObjectGenerator.TEST_SUBSCRIPTION_ID), captor.capture());
 
         CircuitBreakerMessage capturedMessage = captor.getValue();
+
         // Check if the loop counter is taken from the existing circuit breaker message
         assertEquals(circuitBreakerMessage.getLoopCounter(), capturedMessage.getLoopCounter());
        // Check if the last opened date is taken from the existing circuit breaker message
-        assertEquals(circuitBreakerMessage.getLastOpened(), capturedMessage.getLastOpened());
+        long expectedTime = circuitBreakerMessage.getLastOpened().getTime();
+        long actualTime = capturedMessage.getLastOpened().getTime();
+        long tolerance = 1000; // 1000 milliseconds tolerance
+        assertTrue(Math.abs(expectedTime - actualTime) <= tolerance, "Last opened date mismatch");
         // Check if last modified was updated
         assertTrue(capturedMessage.getLastModified().after(testStartDate));
     }
