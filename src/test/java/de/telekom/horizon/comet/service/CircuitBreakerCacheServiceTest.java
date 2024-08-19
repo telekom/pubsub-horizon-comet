@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Optional;
 
@@ -63,10 +64,9 @@ class CircuitBreakerCacheServiceTest {
         // Check if the loop counter is taken from the existing circuit breaker message
         assertEquals(circuitBreakerMessage.getLoopCounter(), capturedMessage.getLoopCounter());
        // Check if the last opened date is taken from the existing circuit breaker message
-        long expectedTime = circuitBreakerMessage.getLastOpened().getTime();
-        long actualTime = capturedMessage.getLastOpened().getTime();
-        long tolerance = 1000; // 1000 milliseconds tolerance
-        assertTrue(Math.abs(expectedTime - actualTime) <= tolerance, "Last opened date mismatch");
+        var expectedTime = Instant.ofEpochMilli(circuitBreakerMessage.getLastOpened().getTime()).truncatedTo(ChronoUnit.SECONDS);
+        var actualTime = Instant.ofEpochMilli(capturedMessage.getLastOpened().getTime()).truncatedTo(ChronoUnit.SECONDS);
+        assertEquals(expectedTime, actualTime);
         // Check if last modified was updated
         assertTrue(capturedMessage.getLastModified().after(testStartDate));
     }
