@@ -81,7 +81,7 @@ public class CircuitBreakerCacheService {
             if (result.isPresent()) {
                 CircuitBreakerMessage existingCircuitBreakerMessage = result.get();
                 newCircuitBreakerMessage.setLoopCounter(existingCircuitBreakerMessage.getLoopCounter());
-                newCircuitBreakerMessage.setLastOpened(Date.from(Instant.now()));
+                newCircuitBreakerMessage.setLastOpened(existingCircuitBreakerMessage.getLastOpened());
             }
             circuitBreakerCache.set(subscriptionId, newCircuitBreakerMessage);
         } catch (JsonCacheException e) {
