@@ -9,7 +9,6 @@ import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
-import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
@@ -20,8 +19,8 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicHeader;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -47,7 +46,7 @@ public class RestClient {
     private final HorizonTracer tracer;
     private final CloseableHttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private final ApplicationContext context;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     private final CallbackUrlCache callbackUrlCache;
 
@@ -61,7 +60,7 @@ public class RestClient {
      * @param objectMapper The ObjectMapper instance for JSON serialization and deserialization.
      */
     @Autowired
-    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CallbackUrlCache callbackUrlCache,CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
+    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CallbackUrlCache callbackUrlCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationEventPublisher applicationEventPublisher) throws InterruptedException {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
 
@@ -71,19 +70,17 @@ public class RestClient {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
 
-        this.context = context;
+        this.applicationEventPublisher = applicationEventPublisher;
 
-        retrieveAllAccessTokens(context);
-
+        retrieveAllAccessTokens();
     }
 
     /**
      * Retrieves OAuth2 access token for the configured environments.
      *
-     * @param context The ApplicationContext instance for closing the application if token retrieval fails.
      * @throws InterruptedException If the thread is interrupted while sleeping.
      */
-    public void retrieveAllAccessTokens(ApplicationContext context) throws InterruptedException {
+    public void retrieveAllAccessTokens() throws InterruptedException {
         var retryCount = 0;
 
         do {
@@ -99,8 +96,10 @@ public class RestClient {
             }
         } while(retryCount < 5);
 
-        // Close the application after 5 attempts to get the accessTokens
-        SpringApplication.exit(context, () -> -2);
+        // Publish an TokenFetchingFailureEvent after 5 attempts to get the accessTokens
+        var message = "Error retrieving tokens after 5 attempts";
+        var event = new TokenFetchingFailureEvent(this, message);
+        applicationEventPublisher.publishEvent(event);
     }
 
     /**
@@ -193,8 +192,9 @@ public class RestClient {
         try {
             oAuth2TokenCache.retrieveAllAccessTokens();
         } catch (CouldNotFetchAccessTokenException e) {
-            log.error("Error retrieving scheduled access tokens", e);
-            SpringApplication.exit(context, () -> -2);
+            var message = "Error retrieving tokens within scheduled task";
+            var event = new TokenFetchingFailureEvent(this, message);
+            applicationEventPublisher.publishEvent(event);
         }
     }
 }

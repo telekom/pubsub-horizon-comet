@@ -4,18 +4,19 @@
 
 package de.telekom.horizon.comet.service;
 
-import de.telekom.eni.pandora.horizon.kubernetes.InformerStoreInitHandler;
+import de.telekom.horizon.comet.client.TokenFetchingFailureEvent;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.ExitCodeEvent;
+import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEvent;
-import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.kafka.event.ContainerStoppedEvent;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.stereotype.Service;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The {@code CometService} class is responsible for managing Comet-related functionalities, including Kafka message
@@ -31,6 +32,8 @@ public class CometService {
 
     private final ApplicationContext context;
 
+    private final AtomicBoolean teardownOngoing = new AtomicBoolean(false);
+
 
     /**
      * Constructs a CometService instance.
@@ -42,6 +45,13 @@ public class CometService {
                        ApplicationContext context) {
         this.messageListenerContainer = messageListenerContainer;
         this.context = context;
+    }
+
+    @PreDestroy
+    public void tearDown() {
+        if (teardownOngoing.compareAndSet(false, true)) {
+            stopMessageListenerContainer();
+        }
     }
 
 
@@ -64,7 +74,7 @@ public class CometService {
     private void stopMessageListenerContainer() {
         log.info("Stop kafka message listener container");
 
-        if (messageListenerContainer != null && messageListenerContainer.isRunning()) {
+        if (messageListenerContainer != null) {
             messageListenerContainer.stop();
         }
     }
@@ -76,19 +86,10 @@ public class CometService {
      *              It should be an instance of {@code ContextClosedEvent} or {@code ExitCodeEvent}.
      */
     @EventListener
-    public void applicationStoppedHandler(ApplicationEvent event) {
-        if (event instanceof ContextClosedEvent) {
-            log.info("Context closed event");
-
+    public void applicationEventHandler(ApplicationEvent event) {
+        if (event instanceof TokenFetchingFailureEvent) {
+            log.error(((TokenFetchingFailureEvent) event).getMessage());
             stopMessageListenerContainer();
-        } else if (event instanceof ExitCodeEvent exitcodeevent)  {
-            log.info("Exit code event");
-
-            if (exitcodeevent.getExitCode() == -2) {
-                log.info("Exit code -2");
-
-                stopMessageListenerContainer();
-            }
         }
     }
 
@@ -100,8 +101,14 @@ public class CometService {
      */
     @EventListener
     public void containerStoppedHandler(ContainerStoppedEvent event) {
-        log.error("MessageListenerContainer stopped. Exiting...");
+        if (!teardownOngoing.get()) {
+            log.error("MessageListenerContainer stopped unexpectedly with event {}. Exiting...", event.toString());
 
-        stopMessageListenerContainer();
+            var exitCode= SpringApplication.exit(context, () -> 1);
+
+            System.exit(exitCode);
+        } else {
+            log.info("MessageListenerContainer stopped with event {}.", event.toString());
+        }
     }
 }

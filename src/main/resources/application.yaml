@@ -6,6 +6,12 @@ spring:
   application:
     name: Horizon Comet
 
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  shutdown: graceful
+
 logging:
   level:
     root: ${LOG_LEVEL:INFO}
