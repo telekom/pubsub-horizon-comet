@@ -4,13 +4,12 @@
 
 package de.telekom.horizon.comet.service;
 
+import de.telekom.horizon.comet.actuator.HorizonPreStopEvent;
 import de.telekom.horizon.comet.client.TokenFetchingFailureEvent;
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.kafka.event.ContainerStoppedEvent;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
@@ -32,7 +31,7 @@ public class CometService {
 
     private final ApplicationContext context;
 
-    private final AtomicBoolean teardownOngoing = new AtomicBoolean(false);
+    private final AtomicBoolean isPreStop = new AtomicBoolean(false);
 
 
     /**
@@ -46,14 +45,6 @@ public class CometService {
         this.messageListenerContainer = messageListenerContainer;
         this.context = context;
     }
-
-    @PreDestroy
-    public void tearDown() {
-        if (teardownOngoing.compareAndSet(false, true)) {
-            stopMessageListenerContainer();
-        }
-    }
-
 
     /**
      * Starts the Kafka message listener container if it is not null.
@@ -80,17 +71,31 @@ public class CometService {
     }
 
     /**
-     * Handles the application stopping event by stopping the Kafka message listener container.
+     * Handles an PreStop event usually triggered via container platform which will stop the Kafka message listener container in an expected way.
      *
      * @param event The application event triggering the handler.
-     *              It should be an instance of {@code ContextClosedEvent} or {@code ExitCodeEvent}.
+     *              It will be an instance of {@code TokenFetchingFailureEvent}.
      */
     @EventListener
-    public void applicationEventHandler(ApplicationEvent event) {
-        if (event instanceof TokenFetchingFailureEvent) {
-            log.error(((TokenFetchingFailureEvent) event).getMessage());
+    public void handleHorizonPreStopEvent(HorizonPreStopEvent event) {
+        log.info(event.getMessage());
+
+        if (isPreStop.compareAndSet(false, true)) {
             stopMessageListenerContainer();
         }
+    }
+
+    /**
+     * Handles the event of a token fetching failure which will stop the Kafka message listener container in an unexpected way.
+     *
+     * @param event The application event triggering the handler.
+     *              It will be an instance of {@code TokenFetchingFailureEvent}.
+     */
+    @EventListener
+    public void handleTokenFetchingFailureEvent(TokenFetchingFailureEvent event) {
+        log.error(event.getMessage());
+
+        stopMessageListenerContainer();
     }
 
     /**
@@ -101,13 +106,11 @@ public class CometService {
      */
     @EventListener
     public void containerStoppedHandler(ContainerStoppedEvent event) {
-        if (!teardownOngoing.get()) {
+        if (!isPreStop.get()) {
             log.error("MessageListenerContainer stopped unexpectedly with event {}. Exiting...", event.toString());
 
-            var exitCode= SpringApplication.exit(context, () -> 1);
-
-            System.exit(exitCode);
-        } else {
+            System.exit(SpringApplication.exit(context, () -> 1));
+        } else { // we don't need to shut down, since SIGTERM will usually send by the platform after preStop endpoint has been invoked
             log.info("MessageListenerContainer stopped with event {}.", event.toString());
         }
     }

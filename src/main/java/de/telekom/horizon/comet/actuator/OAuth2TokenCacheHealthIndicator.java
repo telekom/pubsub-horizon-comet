@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-package de.telekom.horizon.comet.health;
+package de.telekom.horizon.comet.actuator;
 
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
 import org.springframework.boot.actuate.health.Health;

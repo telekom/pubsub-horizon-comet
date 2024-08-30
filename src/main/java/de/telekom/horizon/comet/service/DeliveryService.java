@@ -113,7 +113,6 @@ public class DeliveryService implements DeliveryResultListener {
     private void stopTaskExecutorWithTimeout() {
         deliveryTaskExecutor.shutdown();
         redeliveryTaskExecutor.shutdown();
-
     }
 
     /**
