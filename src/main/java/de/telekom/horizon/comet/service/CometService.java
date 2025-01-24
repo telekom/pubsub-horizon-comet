@@ -4,18 +4,19 @@
 
 package de.telekom.horizon.comet.service;
 
-import de.telekom.horizon.comet.actuator.HorizonPreStopEvent;
 import de.telekom.horizon.comet.client.TokenFetchingFailureEvent;
+import de.telekom.horizon.comet.config.CometConfig;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
-import org.springframework.context.ApplicationContext;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.event.EventListener;
 import org.springframework.kafka.event.ContainerStoppedEvent;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.time.Instant;
 
 /**
  * The {@code CometService} class is responsible for managing Comet-related functionalities, including Kafka message
@@ -27,11 +28,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Service
 public class CometService {
 
+    private final CometConfig config;
+
     private final ConcurrentMessageListenerContainer<String, String> messageListenerContainer;
 
-    private final ApplicationContext context;
-
-    private final AtomicBoolean isPreStop = new AtomicBoolean(false);
+    private final ConfigurableApplicationContext context;
 
 
     /**
@@ -40,8 +41,9 @@ public class CometService {
      * @param messageListenerContainer   The Kafka message listener container.
      * @param context                    The application context.
      */
-    public CometService(ConcurrentMessageListenerContainer<String, String> messageListenerContainer,
-                       ApplicationContext context) {
+    public CometService(CometConfig config, ConcurrentMessageListenerContainer<String, String> messageListenerContainer,
+                        ConfigurableApplicationContext context) {
+        this.config = config;
         this.messageListenerContainer = messageListenerContainer;
         this.context = context;
     }
@@ -58,32 +60,6 @@ public class CometService {
         }
     }
 
-    /**
-     * Stops the Kafka message listener container if it is not null and running.
-     * This method is designed to gracefully stop the consumption of Kafka messages.
-     */
-    private void stopMessageListenerContainer() {
-        log.info("Stop kafka message listener container");
-
-        if (messageListenerContainer != null) {
-            messageListenerContainer.stop();
-        }
-    }
-
-    /**
-     * Handles an PreStop event usually triggered via container platform which will stop the Kafka message listener container in an expected way.
-     *
-     * @param event The application event triggering the handler.
-     *              It will be an instance of {@code TokenFetchingFailureEvent}.
-     */
-    @EventListener
-    public void handleHorizonPreStopEvent(HorizonPreStopEvent event) {
-        log.info(event.getMessage());
-
-        if (isPreStop.compareAndSet(false, true)) {
-            stopMessageListenerContainer();
-        }
-    }
 
     /**
      * Handles the event of a token fetching failure which will stop the Kafka message listener container in an unexpected way.
@@ -93,25 +69,59 @@ public class CometService {
      */
     @EventListener
     public void handleTokenFetchingFailureEvent(TokenFetchingFailureEvent event) {
-        log.error(event.getMessage());
-
-        stopMessageListenerContainer();
+        log.error("Error while fetching token. Stopping the service now. Reason: {}", event.getMessage());
+        stopService();
     }
 
     /**
-     * Handles the event when the Kafka message listener container is stopped.
-     * This method gracefully stops the message listener container and initiates the application exit process.
+     * Will be invoked when the bean should be destroyed due to an application shutdown
      *
-     * @param event The {@code ContainerStoppedEvent} triggered when the Kafka container is stopped.
+     * Stops the message listener container and therefore the further processing of messages
+     *
      */
-    @EventListener
-    public void containerStoppedHandler(ContainerStoppedEvent event) {
-        if (!isPreStop.get()) {
-            log.error("MessageListenerContainer stopped unexpectedly with event {}. Exiting...", event.toString());
-
-            System.exit(SpringApplication.exit(context, () -> 1));
-        } else { // we don't need to shut down, since SIGTERM will usually send by the platform after preStop endpoint has been invoked
-            log.info("MessageListenerContainer stopped with event {}.", event.toString());
+    @PreDestroy
+    public void stopService() {
+        // stop message listener container
+        if (messageListenerContainer != null && messageListenerContainer.isRunning()) {
+            log.warn("Stopping MessageListenerContainer due to application shutdown.");
+            messageListenerContainer.stop();
         }
+    }
+
+    /**
+     * Will be invoked when the message listener container stopped
+     *
+     * Initiates the graceful shutdown of the application
+     *
+     */
+    @EventListener(value = {ContainerStoppedEvent.class})
+    public void containerStoppedHandler() {
+        gracefulShutdown();
+    }
+
+    /**
+     * Handles the graceful shutdown of the application
+     *
+     * The method checks whether the application's context already has been closed. Depending on the outcome
+     * the shutdown will be handled either as expected or unexpected.
+     *
+     */
+    private void gracefulShutdown() {
+        var isContextClosed = context.isClosed();
+
+        if (isContextClosed) {
+            log.warn("MessageListenerContainer stopped. Exiting application in {} seconds...", config.getShutdownWaitTimeSeconds());
+        } else {
+            log.error("MessageListenerContainer stopped unexpectedly. Exiting application in {} seconds...", config.getShutdownWaitTimeSeconds());
+        }
+
+        // wait for some time for ongoing tasks to finish
+        try {
+            Thread.sleep(Instant.ofEpochSecond(config.getShutdownWaitTimeSeconds()).toEpochMilli());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        System.exit(SpringApplication.exit(context, () -> isContextClosed ? 0 : 1));
     }
 }

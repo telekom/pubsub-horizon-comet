@@ -14,6 +14,9 @@ import java.util.List;
 @Getter
 public class CometConfig {
 
+    @Value("${comet.shutdownWaitTimeSeconds:30}")
+    private int shutdownWaitTimeSeconds;
+
     @Value("#{'${comet.callback.redelivery-status-codes}'.split(',')}")
     private List<Integer> redeliveryStatusCodes;
 

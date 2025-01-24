@@ -7,7 +7,10 @@ spring:
     name: Horizon Comet
 
   lifecycle:
-    timeout-per-shutdown-phase: 60s
+    # if we get a SIGTERM, still allow web server requests for x seconds
+    # to ensure lifeness probes / health checks still succeed while we are processing shutdown tasks
+    # This should be greater or equals the shutdown wait time
+    timeout-per-shutdown-phase: 30s
 
 server:
   shutdown: graceful
