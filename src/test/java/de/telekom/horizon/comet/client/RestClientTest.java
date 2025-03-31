@@ -11,6 +11,7 @@ import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
+import de.telekom.horizon.comet.test.utils.HazelcastTestInstance;
 import de.telekom.horizon.comet.test.utils.HorizonTestHelper;
 import de.telekom.horizon.comet.test.utils.ObjectGenerator;
 import org.apache.http.StatusLine;
@@ -36,7 +37,7 @@ import static de.telekom.horizon.comet.test.utils.ObjectGenerator.generateCallba
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, HazelcastTestInstance.class})
 class RestClientTest extends AbstractIntegrationTest {
     @Mock
     CometConfig cometConfig;

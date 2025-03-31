@@ -12,10 +12,12 @@ import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.StatusMessage;
 import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
+import de.telekom.horizon.comet.test.utils.HazelcastTestInstance;
 import de.telekom.horizon.comet.test.utils.HorizonTestHelper;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(HazelcastTestInstance.class)
 class DeliveryErrorTests extends AbstractIntegrationTest {
 
     @AfterEach

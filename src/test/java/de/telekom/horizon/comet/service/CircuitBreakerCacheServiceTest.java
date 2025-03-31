@@ -8,6 +8,7 @@ import de.telekom.eni.pandora.horizon.cache.service.JsonCacheService;
 import de.telekom.eni.pandora.horizon.exception.JsonCacheException;
 import de.telekom.eni.pandora.horizon.model.meta.CircuitBreakerMessage;
 import de.telekom.eni.pandora.horizon.model.meta.CircuitBreakerStatus;
+import de.telekom.horizon.comet.test.utils.HazelcastTestInstance;
 import de.telekom.horizon.comet.test.utils.ObjectGenerator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,7 +26,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, HazelcastTestInstance.class})
 class CircuitBreakerCacheServiceTest {
     @Mock
     JsonCacheService<CircuitBreakerMessage> cacheService;
