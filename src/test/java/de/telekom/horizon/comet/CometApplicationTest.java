@@ -5,10 +5,13 @@
 package de.telekom.horizon.comet;
 
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
+import de.telekom.horizon.comet.test.utils.HazelcastTestInstance;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
+@ExtendWith(HazelcastTestInstance.class)
 class CometApplicationTest extends AbstractIntegrationTest {
 
     @Test
