@@ -58,6 +58,8 @@ management:
   health:
     hazelcast:
       enabled: false
+    mongo:
+      enabled: false
   zipkin:
     tracing:
       endpoint: ${JAEGER_COLLECTOR_URL:http://jaeger.example.com:9411}
@@ -95,7 +97,11 @@ horizon:
     compression:
       enabled: ${COMET_KAFKA_COMPRESSION_ENABLED:false}
       type: ${COMET_KAFKA_COMPRESSION_TYPE:none}
+  mongo:
+    enabled: ${COMET_MONGO_ENABLED:true}
+    url: ${COMET_MONGO_URL:mongodb://root:root@localhost:27017}
+    database: ${COMET_MONGO_DATABASE:horizon-config}
+    collection: ${COMET_MONGO_COLLECTION:eventSubscriptions}
 
-pandora:
   tracing:
     name: horizon
