@@ -51,6 +51,8 @@ public class CircuitBreakerCacheService {
         } catch (JsonCacheException e) {
             log.error("Could not check status of circuit breaker for subscriptionId {}: {}", subscriptionId, e.getMessage());
             e.printStackTrace();
+        } catch (Exception e) {
+            log.error("Exception checking CircuitBreakerCache for subscriptionId {}: {}", subscriptionId, e.getMessage());
         }
         return false;
     }
@@ -86,6 +88,9 @@ public class CircuitBreakerCacheService {
             circuitBreakerCache.set(subscriptionId, newCircuitBreakerMessage);
         } catch (JsonCacheException e) {
             log.error("Could not open circuit breaker for subscriptionId {}: {}", subscriptionId, e.getMessage());
+        } catch (Exception e) {
+            log.error("Exception open CircuitBreakerCache for subscriptionId {}: {}", subscriptionId, e.getMessage());
         }
+
     }
 }
