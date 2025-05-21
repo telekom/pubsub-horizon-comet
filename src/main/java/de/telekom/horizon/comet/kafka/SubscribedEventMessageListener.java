@@ -21,7 +21,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 
 import static de.telekom.horizon.comet.utils.MessageUtils.isStatusMessage;
 

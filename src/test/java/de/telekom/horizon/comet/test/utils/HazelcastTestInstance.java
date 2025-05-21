@@ -7,7 +7,8 @@ package de.telekom.horizon.comet.test.utils;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import lombok.Getter;
-import org.junit.jupiter.api.extension.*;
+import org.junit.jupiter.api.extension.BeforeAllCallback;
+import org.junit.jupiter.api.extension.ExtensionContext;
 
 public class HazelcastTestInstance implements BeforeAllCallback, ExtensionContext.Store.CloseableResource {
 
