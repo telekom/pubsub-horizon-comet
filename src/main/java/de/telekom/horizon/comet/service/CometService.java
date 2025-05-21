@@ -4,10 +4,8 @@
 
 package de.telekom.horizon.comet.service;
 
-import de.telekom.eni.pandora.horizon.kubernetes.InformerStoreInitHandler;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ExitCodeEvent;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEvent;
