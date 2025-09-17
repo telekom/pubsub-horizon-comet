@@ -119,9 +119,9 @@ public class SubscribedEventMessageHandler {
     public CompletableFuture<SendResult<String, String>> handleEvent(SubscriptionEventMessage subscriptionEventMessage, Span rootSpan, HorizonComponentId messageSource) {
         log.debug("Check circuitBreaker for subscriptionId {}", subscriptionEventMessage.getSubscriptionId());
         if (isCircuitBreakerOpenOrChecking(subscriptionEventMessage)) {
-            log.debug("Circuit breaker is open for subscriptionId {}, setting event for event with id {} on WAITING", subscriptionEventMessage.getSubscriptionId(), subscriptionEventMessage.getUuid());
-            rootSpan.annotate("Circuit Breaker open! Set event on WAITING");
-            rootSpan.tag("result", "Set on WAITING due to circuit breaker open");
+            log.debug("Circuit breaker is open for subscriptionId {}, setting event for event with id {} to WAITING", subscriptionEventMessage.getSubscriptionId(), subscriptionEventMessage.getUuid());
+            rootSpan.annotate("Circuit Breaker open! Set event to WAITING");
+            rootSpan.tag("result", "Set to WAITING due to open circuit breaker");
             rootSpan.tag("reason", "circuit_breaker_open");
             return stateService.updateState(Status.WAITING, subscriptionEventMessage, null);
         }
