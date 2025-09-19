@@ -130,6 +130,12 @@ public class DeliveryTask implements Runnable {
 
             if (isCircuitBreakerOpenOrChecking(subscriptionEventMessage.getSubscriptionId())) {
                 status = Status.WAITING;
+
+                log.debug("Circuit breaker is open for subscriptionId {}, skipping delivery for event with id {}", subscriptionEventMessage.getSubscriptionId(), subscriptionEventMessage.getUuid());
+                deliverySpan.annotate("Circuit Breaker open! Delivery skipped");
+                deliverySpan.tag("result", "skipped due to open circuit breaker");
+                deliverySpan.tag("reason", "circuit_breaker_open");
+
                 return; // jumps into finally block
             }
 
