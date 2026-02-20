@@ -9,6 +9,7 @@ import de.telekom.eni.pandora.horizon.model.meta.EventRetentionTime;
 import de.telekom.horizon.comet.kafka.KafkaConsumerRebalanceListener;
 import de.telekom.horizon.comet.kafka.SubscribedEventMessageListener;
 import de.telekom.horizon.comet.service.SubscribedEventMessageHandler;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,9 +30,9 @@ import java.util.Arrays;
 public class KafkaConsumerConfig {
 
     /**
-     *  This method is annotated with {@code @PreDestroy}, indicating that it should be
-     *  called before the bean is destroyed. It is responsible for performing cleanup
-     *  tasks related to the destruction of the Kafka consumer concurrentMessageListenerContainer.
+     * This method is annotated with {@code @PreDestroy}, indicating that it should be
+     * called before the bean is destroyed. It is responsible for performing cleanup
+     * tasks related to the destruction of the Kafka consumer concurrentMessageListenerContainer.
      */
     @PreDestroy
     private void preDestroy() {
@@ -51,7 +52,8 @@ public class KafkaConsumerConfig {
     @Bean
     public ConcurrentMessageListenerContainer<String, String> concurrentMessageListenerContainer(SubscribedEventMessageHandler subscribedEventMessageHandler,
                                                                                                  KafkaProperties props,
-                                                                                                 ConsumerFactory<String, String> consumerFactory) {
+                                                                                                 ConsumerFactory<String, String> consumerFactory,
+                                                                                                 MeterRegistry meterRegistry) {
         // Extract topic names from EventRetentionTime values
         var topicNames = Arrays.stream(EventRetentionTime.values()).
                 map(EventRetentionTime::getTopic).
@@ -62,7 +64,7 @@ public class KafkaConsumerConfig {
         var containerProperties = new ContainerProperties(topicNames);
         containerProperties.setAckMode(ContainerProperties.AckMode.MANUAL);
         containerProperties.setConsumerRebalanceListener(new KafkaConsumerRebalanceListener());
-        containerProperties.setMessageListener(new SubscribedEventMessageListener(subscribedEventMessageHandler));
+        containerProperties.setMessageListener(new SubscribedEventMessageListener(subscribedEventMessageHandler, meterRegistry));
 
         // Create ConcurrentMessageListenerContainer
         ConcurrentMessageListenerContainer<String, String> listenerContainer = new ConcurrentMessageListenerContainer<>(consumerFactory, containerProperties);
@@ -71,7 +73,7 @@ public class KafkaConsumerConfig {
 
         // Set the bean name as the prefix  of the Kafka consumer thread name
         listenerContainer.setBeanName("kafka-message-listener");
-        
+
         return listenerContainer;
     }
 }

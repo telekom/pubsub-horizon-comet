@@ -7,6 +7,8 @@ package de.telekom.horizon.comet.kafka;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import de.telekom.eni.pandora.horizon.model.event.MessageType;
 import de.telekom.horizon.comet.service.SubscribedEventMessageHandler;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.jetbrains.annotations.NotNull;
@@ -21,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
 
 import static de.telekom.horizon.comet.utils.MessageUtils.isStatusMessage;
 
@@ -33,14 +36,24 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
 
     private final SubscribedEventMessageHandler subscribedEventMessageHandler;
 
+    private final Counter nackCounter;
+    private final Counter nackDueToTaskFailureCounter;
+
     /**
      * Constructor for SubscribedEventMessageListener.
      *
      * @param subscribedEventMessageHandler The SubscribedEventMessageHandler for processing subscribed event messages.
      */
-    public SubscribedEventMessageListener(SubscribedEventMessageHandler subscribedEventMessageHandler) {
+    public SubscribedEventMessageListener(SubscribedEventMessageHandler subscribedEventMessageHandler, MeterRegistry meterRegistry) {
         super();
         this.subscribedEventMessageHandler = subscribedEventMessageHandler;
+
+        this.nackCounter = Counter.builder("pubsub.kafka.listener.nacks")
+                .description("Total number of batch nacks")
+                .register(meterRegistry);
+        this.nackDueToTaskFailureCounter = Counter.builder("pubsub.kafka.listener.nacks.task_failure")
+                .description("Nacks due to task execution failure")
+                .register(meterRegistry);
     }
 
     /**
@@ -50,7 +63,7 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
      * @return A CompletableFuture with the SendResult or null if the message type was METADATA or an exception occurred.
      */
     public CompletableFuture<SendResult<String, String>> onMessage(@NonNull ConsumerRecord<String, String> record) {
-       if (isStatusMessage(record)) {
+        if (isStatusMessage(record)) {
             log.debug("Received (metadata) ({}) record at partition {} and offset {} in topic {} with record id {}", MessageType.METADATA, record.partition(), record.offset(), record.topic(), record.key());
             return null;
         }
@@ -71,7 +84,7 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
     /**
      * Handles a batch of messages and acknowledges or nacks based on the outcome of message handling.
      *
-     * @param records       The list of ConsumerRecords representing the received messages.
+     * @param records        The list of ConsumerRecords representing the received messages.
      * @param acknowledgment The Acknowledgment to acknowledge or nack the batch.
      */
     @Override
@@ -85,10 +98,16 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
         } catch (Exception ex) {
             log.error("Exception thrown while handling events with ids [{}]. Nacking batch.", eventUuids, ex);
             acknowledgment.nack(Duration.of(5000, ChronoUnit.MILLIS));
+
+            nackCounter.increment();
+            if (ex instanceof RejectedExecutionException) {
+                nackDueToTaskFailureCounter.increment();
+            }
+
             return;
         }
         acknowledgment.acknowledge();
 
-        log.debug("Acknowledged record batch from offset {} to offset {} with event ids [{}]", records.get(0).offset(), records.get(records.size()-1).offset(), eventUuids);
+        log.debug("Acknowledged record batch from offset {} to offset {} with event ids [{}]", records.get(0).offset(), records.get(records.size() - 1).offset(), eventUuids);
     }
 }
