@@ -7,7 +7,6 @@ package de.telekom.horizon.comet.service;
 import brave.Span;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
-import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
 import de.telekom.eni.pandora.horizon.metrics.HorizonMetricsHelper;
 import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.Status;
@@ -31,13 +30,12 @@ import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 
 import static de.telekom.eni.pandora.horizon.metrics.HorizonMetricsConstants.*;
 
 /**
  * The {@code DeliveryTask} class is responsible for executing the callback request for a single event message.
- *
+ * <p>
  * The class handles a single {@link SubscriptionEventMessage} object.
  * For each {@link SubscriptionEventMessage} a task is created using the {@link DeliveryTaskFactory}.
  * If any task in the list fails, a nack (negative acknowledgment) for the failed message
@@ -68,8 +66,6 @@ public class DeliveryTask implements Runnable {
 
     private final CallbackUrlCache callbackUrlCache;
 
-    private final DeDuplicationService deDuplicationService;
-
     private final DeliveryResultListener deliveryResultListener;
 
     private Span deliverySpan;
@@ -97,7 +93,6 @@ public class DeliveryTask implements Runnable {
         this.cometMetrics = deliveryTaskRecord.deliveryTaskFactory().getCometMetrics();
         this.circuitBreakerCacheService = deliveryTaskRecord.deliveryTaskFactory().getCircuitBreakerCacheService();
         this.callbackUrlCache = deliveryTaskRecord.callbackUrlCache();
-        this.deDuplicationService = deliveryTaskRecord.deliveryTaskFactory().getDeDuplicationService();
         this.deliverySpan = deliveryTaskRecord.deliverySpan();
         this.messageSource = deliveryTaskRecord.messageSource();
         this.context = deliveryTaskRecord.context();
@@ -107,7 +102,7 @@ public class DeliveryTask implements Runnable {
      * Executes the delivery task for the current event message.
      * This method handles exceptions thrown during the callback request and writes information about them into the current tracing span.
      * This method also handles the circuit breaker state for the current subscription.
-     *
+     * <p>
      * If the circuit breaker is open, the task waits for the configured backoff interval before returning.
      * If the circuit breaker is closed, the task executes the callback request and handles any exceptions thrown during the request.
      * If the callback request fails, the task determines whether the event should be redelivered based on the HTTP status code.
@@ -126,7 +121,7 @@ public class DeliveryTask implements Runnable {
 
             addTracing();
 
-            waitForBackoffPeriod();
+            deliverySpan.annotate(String.format("waited %d milliseconds for backoff", backoffInterval));
 
             if (isCircuitBreakerOpenOrChecking(subscriptionEventMessage.getSubscriptionId())) {
                 status = Status.WAITING;
@@ -150,12 +145,6 @@ public class DeliveryTask implements Runnable {
             exception = callbackUrlNotFoundException;
             log.error("No callback url found for EventMessage with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(callbackUrlNotFoundException));
             deliverySpan.error(callbackUrlNotFoundException);
-        } catch (InterruptedException interruptedException) {
-            exception = interruptedException;
-            shouldRedeliver = true; // Thread is occupied and could not finish, therefore we need to redeliver (may create duplicates)
-            log.error("Thread interrupted while delivering event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(interruptedException));
-            deliverySpan.error(interruptedException);
-            Thread.currentThread().interrupt();
         } catch (JsonProcessingException jsonProcessingException) {
             exception = jsonProcessingException;
             log.error("Could not process json for event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(jsonProcessingException));
@@ -178,7 +167,7 @@ public class DeliveryTask implements Runnable {
             log.error("Unknown exception occurred while processing event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(unknownException));
             deliverySpan.error(unknownException);
         } finally {
-            if(exception != null) {
+            if (exception != null) {
                 writeInternalExceptionMetricTag(exception);
             }
 
@@ -212,28 +201,7 @@ public class DeliveryTask implements Runnable {
         tracer.addTagsToSpanFromSubscriptionEventMessage(deliverySpan, subscriptionEventMessage);
 
         if (backoffInterval > 0) {
-            deliverySpan.annotate(String.format("retry attempt %d", retryCount+1));
-        }
-    }
-
-    /**
-     * Waits for the configured backoff interval.
-     *
-     * @throws InterruptedException if the current thread is interrupted while sleeping
-     */
-    protected void waitForBackoffPeriod() throws InterruptedException {
-        if (backoffInterval != 0) {
-            var sleepingSpan = tracer.startScopedDebugSpan("backoff interval");
-            sleepingSpan.tag("backoffInterval", String.valueOf(backoffInterval));
-            sleepingSpan.annotate("wait for backoff period");
-
-            try {
-                TimeUnit.MILLISECONDS.sleep(backoffInterval);
-            } finally {
-                sleepingSpan.finish();
-            }
-
-            deliverySpan.annotate(String.format("waited %d milliseconds for backoff", backoffInterval));
+            deliverySpan.annotate(String.format("retry attempt %d", retryCount + 1));
         }
     }
 
@@ -283,9 +251,9 @@ public class DeliveryTask implements Runnable {
      * Executes the callback request for the current event message.
      * This method sets tags in the current span related to the callbackUrl.
      *
-     * @throws CallbackException              if the callback request fails
-     * @throws CallbackUrlNotFoundException  if no callback URL is found for the current event message
-     * @throws IOException                    if an I/O error occurs while sending the callback request
+     * @throws CallbackException            if the callback request fails
+     * @throws CallbackUrlNotFoundException if no callback URL is found for the current event message
+     * @throws IOException                  if an I/O error occurs while sending the callback request
      */
     private void executeCallback() throws CallbackException, CallbackUrlNotFoundException, IOException, CouldNotFetchAccessTokenException {
         deliverySpan.annotate("make callback request");
@@ -314,18 +282,20 @@ public class DeliveryTask implements Runnable {
      * Writes information about a callback exception into the current tracing span.
      * This method sets tags in the current span related to the HTTP code, exception cause, and redelivery status.
      *
-     * @param exceptionCause The Throwable representing the cause of the exception.
-     * @param httpCode       The HTTP status code associated with the callback exception.
+     * @param exceptionCause  The Throwable representing the cause of the exception.
+     * @param httpCode        The HTTP status code associated with the callback exception.
      * @param shouldRedeliver True if the event should be redelivered after the callback exception; otherwise, false.
      */
     public void writeCallbackExceptionInTrace(Throwable exceptionCause, int httpCode, boolean shouldRedeliver) {
         Span span = tracer.getCurrentSpan();
-        if (span == null) { return; }
+        if (span == null) {
+            return;
+        }
 
         if (!shouldRedeliver) {
             span.tag("statusCode", String.valueOf(httpCode));
-            if(exceptionCause != null) {
-                span.tag("cause",  exceptionCause.toString());
+            if (exceptionCause != null) {
+                span.tag("cause", exceptionCause.toString());
             }
         }
 
@@ -367,7 +337,7 @@ public class DeliveryTask implements Runnable {
      */
     public String buildCauseDescription(Throwable exceptionCause, int httpCode) {
         var causeDescription = "HTTP " + httpCode;
-        if(exceptionCause != null) {
+        if (exceptionCause != null) {
             causeDescription = buildCauseDescription(exceptionCause);
         }
         return causeDescription;
@@ -383,7 +353,7 @@ public class DeliveryTask implements Runnable {
     public String buildCauseDescription(Throwable exceptionCause) {
         var causeDescription = "";
         if (exceptionCause != null) {
-            causeDescription =  String.format("cause %s %s with Type %s", exceptionCause, exceptionCause.getMessage(), exceptionCause.getClass().getName());
+            causeDescription = String.format("cause %s %s with Type %s", exceptionCause, exceptionCause.getMessage(), exceptionCause.getClass().getName());
         }
         return causeDescription;
     }

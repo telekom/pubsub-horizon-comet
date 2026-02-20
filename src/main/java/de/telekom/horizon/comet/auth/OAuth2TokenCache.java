@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The {@code OAuth2TokenCache} class is responsible for caching and managing OAuth2 access tokens.
@@ -37,7 +38,7 @@ public class OAuth2TokenCache {
     private final String accessTokenUrl;
     private final String clientId;
     private final Map<String, String> clientSecretMap = new HashMap<>();
-    private final Map<String, AccessToken> accessTokenMap = new HashMap<>();
+    private final Map<String, AccessToken> accessTokenMap = new ConcurrentHashMap<>();
     private Boolean internalIssueDetected = false;
 
     /**
@@ -66,15 +67,38 @@ public class OAuth2TokenCache {
      *
      * @param environment The environment for which to retrieve the access token.
      * @return The OAuth2 access token.
+     * @throws CouldNotFetchAccessTokenException If an error occurs during access token retrieval.
      */
-    public synchronized String getToken(String environment) throws CouldNotFetchAccessTokenException {
-        if (!clientSecretMap.containsKey(environment)){
-            environment = DEFAULT_REALM;
+    public String getToken(String environment) throws CouldNotFetchAccessTokenException {
+        final String finalEnv = clientSecretMap.containsKey(environment) ? environment : DEFAULT_REALM;
+
+        AccessToken token = accessTokenMap.get(finalEnv);
+        if (token == null || token.isExpired()) {
+            try {
+                token = accessTokenMap.compute(finalEnv, (key, existingToken) -> {
+                    // Double-check inside the atomic operation
+                    if (existingToken == null || existingToken.isExpired()) {
+                        try {
+                            retrieveAccessToken(finalEnv);
+                            return accessTokenMap.get(finalEnv);
+                        } catch (CouldNotFetchAccessTokenException e) {
+                            // Wrap the checked exception in an unchecked one to pass through lambda
+                            throw new RuntimeException(e);
+                        }
+                    }
+                    return existingToken;
+                });
+            } catch (RuntimeException e) {
+                // Unwrap the original exception if it's our expected type
+                if (e.getCause() instanceof CouldNotFetchAccessTokenException) {
+                    throw (CouldNotFetchAccessTokenException) e.getCause();
+                }
+                // Otherwise, rethrow the runtime exception
+                throw e;
+            }
         }
-        if (isNotValidToken(environment)) {
-            retrieveAccessToken(environment);
-        }
-        return accessTokenMap.get(environment).getToken();
+
+        return token.getToken();
     }
 
     /**
@@ -96,7 +120,7 @@ public class OAuth2TokenCache {
      * @throws CouldNotFetchAccessTokenException If an error occurs while fetching any of the access tokens.
      */
     public void retrieveAllAccessTokens() throws CouldNotFetchAccessTokenException {
-        for(var environment : clientSecretMap.keySet()) {
+        for (var environment : clientSecretMap.keySet()) {
             retrieveAccessToken(environment);
         }
 
@@ -118,7 +142,7 @@ public class OAuth2TokenCache {
 
         final ResponseEntity<String> response;
         try {
-             response = restTemplate.exchange(exchangeUrl, HttpMethod.POST, createRequest(secret), String.class);
+            response = restTemplate.exchange(exchangeUrl, HttpMethod.POST, createRequest(secret), String.class);
         } catch (RestClientException e) {
             log.error("Error retrieving access tokens", e);
             throw new CouldNotFetchAccessTokenException(e);
@@ -210,7 +234,7 @@ public class OAuth2TokenCache {
      * @return true if the access token cache is valid, false otherwise.
      */
     public boolean isAccessTokenCacheValid() {
-        if(Boolean.TRUE.equals(internalIssueDetected)) {
+        if (Boolean.TRUE.equals(internalIssueDetected)) {
             return false;
         }
 
@@ -228,7 +252,7 @@ public class OAuth2TokenCache {
      * @param hasIssue true if there is an issue with the cache, false otherwise.
      */
     public void setInternalIssueDetected(boolean hasIssue) {
-        this.internalIssueDetected  = hasIssue;
+        this.internalIssueDetected = hasIssue;
 
     }
 }
