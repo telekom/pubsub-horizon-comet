@@ -17,16 +17,19 @@ import de.telekom.horizon.comet.exception.CallbackUrlNotFoundException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import de.telekom.horizon.comet.model.DeliveryResult;
 import de.telekom.horizon.comet.model.DeliveryTaskRecord;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The {@code DeliveryService} for handling event deliveries and managing delivery tasks.
@@ -39,13 +42,14 @@ public class DeliveryService implements DeliveryResultListener {
 
     private final ThreadPoolTaskExecutor deliveryTaskExecutor;
 
-    private final ThreadPoolTaskExecutor redeliveryTaskExecutor;
+    private final ScheduledExecutorService redeliveryTaskExecutor;
 
     private final CometConfig cometConfig;
 
     private final HorizonTracer tracer;
 
     private final CallbackUrlCache callbackUrlCache;
+
     private final Map<String, Integer> retryCounts;
 
     private final StateService stateService;
@@ -60,17 +64,20 @@ public class DeliveryService implements DeliveryResultListener {
     /**
      * Constructs a {@code DeliveryService} with necessary dependencies.
      *
-     * @param cometConfig               The {@code CometConfig} instance for configuration.
-     * @param tracer                    The {@code HorizonTracer} instance for creating spans.
-     * @param callbackUrlCache          The {@code CallbackUrlCache} instance for caching callback URLs.
-     * @param stateService              The {@code StateService} instance for managing event states.
+     * @param cometConfig                The {@code CometConfig} instance for configuration.
+     * @param tracer                     The {@code HorizonTracer} instance for creating spans.
+     * @param callbackUrlCache           The {@code CallbackUrlCache} instance for caching callback URLs.
+     * @param stateService               The {@code StateService} instance for managing event states.
      * @param circuitBreakerCacheService The {@code CircuitBreakerCacheService} instance for managing circuit breaker states.
-     * @param deDuplicationService      The {@code DeDuplicationService} instance for handling duplicate events.
-     * @param deliveryTaskFactory       The {@code DeliveryTaskFactory} instance for creating delivery tasks.
-     * @param meterRegistry             The {@code MeterRegistry} for monitoring thread pool metrics.
+     * @param deDuplicationService       The {@code DeDuplicationService} instance for handling duplicate events.
+     * @param deliveryTaskFactory        The {@code DeliveryTaskFactory} instance for creating delivery tasks.
      */
     @Autowired
-    public DeliveryService(CometConfig cometConfig, HorizonTracer tracer, CallbackUrlCache callbackUrlCache, StateService stateService, CircuitBreakerCacheService circuitBreakerCacheService, DeDuplicationService deDuplicationService, DeliveryTaskFactory deliveryTaskFactory, MeterRegistry meterRegistry) {
+    public DeliveryService(CometConfig cometConfig, HorizonTracer tracer, CallbackUrlCache callbackUrlCache, StateService stateService,
+                           CircuitBreakerCacheService circuitBreakerCacheService, DeDuplicationService deDuplicationService,
+                           DeliveryTaskFactory deliveryTaskFactory,
+                           @Qualifier("deliveryTaskExecutor") ThreadPoolTaskExecutor deliveryTaskExecutor,
+                           @Qualifier("redeliveryExecutorService") ScheduledExecutorService redeliveryTaskExecutor) {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
         this.callbackUrlCache = callbackUrlCache;
@@ -81,31 +88,14 @@ public class DeliveryService implements DeliveryResultListener {
 
         retryCounts = new HashMap<>();
 
-        this.deliveryTaskExecutor = new ThreadPoolTaskExecutor();
-
-        this.deliveryTaskExecutor.setAwaitTerminationSeconds(20);
-        this.deliveryTaskExecutor.setCorePoolSize(cometConfig.getConsumerThreadPoolSize());
-        this.deliveryTaskExecutor.setMaxPoolSize(cometConfig.getConsumerThreadPoolSize());
-        this.deliveryTaskExecutor.setQueueCapacity(cometConfig.getConsumerQueueCapacity());
-        this.deliveryTaskExecutor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        this.deliveryTaskExecutor.afterPropertiesSet();
-        ExecutorServiceMetrics.monitor(meterRegistry, this.deliveryTaskExecutor.getThreadPoolExecutor(), "deliveryTaskExecutor", Collections.emptyList());
-
-        this.redeliveryTaskExecutor = new ThreadPoolTaskExecutor();
-
-        this.redeliveryTaskExecutor.setAwaitTerminationSeconds(20);
-        this.redeliveryTaskExecutor.setCorePoolSize(cometConfig.getRedeliveryThreadPoolSize());
-        this.redeliveryTaskExecutor.setMaxPoolSize(cometConfig.getRedeliveryThreadPoolSize());
-        this.redeliveryTaskExecutor.setQueueCapacity(cometConfig.getRedeliveryQueueCapacity());
-        this.redeliveryTaskExecutor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        this.redeliveryTaskExecutor.afterPropertiesSet();
-        ExecutorServiceMetrics.monitor(meterRegistry, this.redeliveryTaskExecutor.getThreadPoolExecutor(), "redeliveryTaskExecutor", Collections.emptyList());
+        this.deliveryTaskExecutor = deliveryTaskExecutor;
+        this.redeliveryTaskExecutor = redeliveryTaskExecutor;
     }
 
     /**
      * Shuts down the delivery and redelivery task executors with a timeout to allow
      * graceful termination of running tasks.
-     *
+     * <p>
      * This method is annotated with {@code @PreDestroy} to ensure it is called when
      * the bean is being destroyed.
      */
@@ -113,7 +103,6 @@ public class DeliveryService implements DeliveryResultListener {
     private void stopTaskExecutorWithTimeout() {
         deliveryTaskExecutor.shutdown();
         redeliveryTaskExecutor.shutdown();
-
     }
 
     /**
@@ -137,7 +126,7 @@ public class DeliveryService implements DeliveryResultListener {
 
     /**
      * Handles the delivery result, updating the state and managing redelivery if necessary.
-     *
+     * <p>
      * This method processes the information contained in the {@code DeliveryResult} and takes appropriate actions
      * such as updating the delivery status, handling redelivery attempts, and managing circuit breaker states.
      *
@@ -291,7 +280,13 @@ public class DeliveryService implements DeliveryResultListener {
 
         DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, backoffInterval, retryCount, this, deliveryTaskFactory, callbackUrlCache, deliverySpan, deliveryResult.messageSource(), null);
         var redeliverTask = deliveryTaskFactory.createNew(deliveryTaskRecord);
-        redeliveryTaskExecutor.submit(tracer.withCurrentTraceContext(redeliverTask));
+
+        try {
+            redeliveryTaskExecutor.schedule(tracer.withCurrentTraceContext(redeliverTask), backoffInterval, TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            log.warn("Unable to schedule redelivery for the message with uuid {}", subscriptionEventMessage.getUuid());
+            return false;
+        }
         return true;
     }
 
@@ -308,4 +303,3 @@ public class DeliveryService implements DeliveryResultListener {
                 subscriptionEventMessage.getEnvironment());
     }
 }
-
