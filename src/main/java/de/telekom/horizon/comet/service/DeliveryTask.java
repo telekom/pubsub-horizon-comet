@@ -272,7 +272,7 @@ public class DeliveryTask implements Runnable {
             }
 
             log.info("Executing callback for EventMessage with id '{}' at '{}'", subscriptionEventMessage.getUuid(), callbackUrlOrEmptyStr);
-            restClient.callback(subscriptionEventMessage, callbackUrlOrEmptyStr, context);
+            restClient.callback(subscriptionEventMessage, callbackUrlOrEmptyStr);
         } finally {
             callbackSpan.finish();
         }

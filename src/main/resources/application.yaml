@@ -28,6 +28,9 @@ comet:
     client-secret: ${IRIS_CLIENT_SECRET:default=supersecret}
     # hard code cron statement here to enable configuration (and disablement in integration tests)
     cronTokenFetch: "0 */4 * * * *"
+    token-retry:
+      max-attempts: ${COMET_OIDC_TOKEN_RETRY_MAX_ATTEMPTS:3}
+      backoff-delay-ms: ${COMET_OIDC_TOKEN_RETRY_BACKOFF_DELAY:1000}
   security:
     # Must be lower-case and comma-separated, can be regex
     headerPropagationBlacklist: ${COMET_HEADER_PROPAGATION_BLACKLIST:x-spacegate-token,authorization,content-length,host,accept.*,x-forwarded.*,cookie}
