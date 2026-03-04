@@ -89,7 +89,7 @@ public class ThreadPoolBackpressureHandler implements RejectedExecutionHandler {
      * Periodically monitors thread pool utilization and triggers backpressure events.
      * Runs every 500ms to detect saturation quickly without excessive overhead.
      */
-    @Scheduled(fixedDelayString = "${comet.backpressure.delivery-pool-utilization.resume-check-interval-ms:1000}")
+    @Scheduled(fixedDelayString = "${comet.backpressure.delivery-pool-utilization.resume-check-interval-ms}")
     public void monitorPoolUtilization() {
         if (!paused.get()) {
             return;

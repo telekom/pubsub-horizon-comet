@@ -47,6 +47,9 @@ comet:
     redelivery-status-codes: ${COMET_REDELIVERY_STATUS_CODES:401,429,502,503,504}
     redelivery-threadpool-size: ${COMET_REDELIVERY_THREADPOOL_SIZE:10}
     redelivery-queue-capacity: ${COMET_REDELIVERY_QUEUE_CAPACITY:2147483647}
+  backpressure:
+    delivery-pool-utilization:
+      resume-check-interval-ms: 5000
 
 management:
   endpoints:
