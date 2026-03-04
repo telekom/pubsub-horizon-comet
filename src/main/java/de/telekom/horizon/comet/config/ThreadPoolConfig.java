@@ -13,7 +13,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-import jakarta.annotation.PostConstruct;
+import io.micrometer.core.instrument.binder.MeterBinder;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 import java.util.Collections;
 import java.util.concurrent.ScheduledExecutorService;
@@ -27,9 +28,6 @@ public class ThreadPoolConfig {
     @Autowired
     private CometConfig cometConfig;
 
-    @Autowired
-    private MeterRegistry meterRegistry;
-
     @Bean(name = "deliveryTaskExecutor")
     public ThreadPoolTaskExecutor deliveryTaskExecutor() {
         ThreadPoolTaskExecutor deliveryTaskExecutor = new ThreadPoolTaskExecutor();
@@ -42,9 +40,11 @@ public class ThreadPoolConfig {
         return deliveryTaskExecutor;
     }
 
-    @PostConstruct
-    public void registerDeliveryExecutorMetrics() {
-        ExecutorServiceMetrics.monitor(meterRegistry, deliveryTaskExecutor().getThreadPoolExecutor(), "deliveryTaskExecutor", Collections.emptyList());
+    @Bean
+    public MeterBinder deliveryExecutorMetrics(
+            @Qualifier("deliveryTaskExecutor") ThreadPoolTaskExecutor deliveryTaskExecutor) {
+        return registry -> ExecutorServiceMetrics.monitor(registry,
+                deliveryTaskExecutor.getThreadPoolExecutor(), "deliveryTaskExecutor", Collections.emptyList());
     }
 
     @Bean(name = "redeliveryExecutorService")
