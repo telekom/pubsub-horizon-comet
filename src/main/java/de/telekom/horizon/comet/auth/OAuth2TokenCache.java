@@ -12,7 +12,12 @@ import de.telekom.horizon.comet.exception.TokenRequestErrorException;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
@@ -67,9 +72,8 @@ public class OAuth2TokenCache {
      */
     @Retryable(
             retryFor = CouldNotFetchAccessTokenException.class,
-            //maxAttempts = 3,
-            //maxAttemptsExpression = "${comet.oidc.token-retry.max-attempts:3}",
-            backoff = @Backoff(delay = 100)
+            maxAttemptsExpression = "${comet.oidc.token-retry.max-attempts}",
+            backoff = @Backoff(delayExpression = "${comet.oidc.token-retry.backoff-delay-ms}")
     )
     public String getToken(String environment) throws CouldNotFetchAccessTokenException {
         final String finalEnv = clientSecretMap.containsKey(environment) ? environment : DEFAULT_REALM;
