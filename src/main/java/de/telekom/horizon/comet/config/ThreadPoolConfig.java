@@ -13,6 +13,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
+import jakarta.annotation.PostConstruct;
+
 import java.util.Collections;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -37,10 +39,12 @@ public class ThreadPoolConfig {
         deliveryTaskExecutor.setMaxPoolSize(cometConfig.getConsumerThreadPoolSize());
         deliveryTaskExecutor.setQueueCapacity(cometConfig.getConsumerQueueCapacity());
 
-        deliveryTaskExecutor.afterPropertiesSet();
-        ExecutorServiceMetrics.monitor(meterRegistry, deliveryTaskExecutor.getThreadPoolExecutor(), "deliveryTaskExecutor", Collections.emptyList());
-
         return deliveryTaskExecutor;
+    }
+
+    @PostConstruct
+    public void registerDeliveryExecutorMetrics() {
+        ExecutorServiceMetrics.monitor(meterRegistry, deliveryTaskExecutor().getThreadPoolExecutor(), "deliveryTaskExecutor", Collections.emptyList());
     }
 
     @Bean(name = "redeliveryExecutorService")
