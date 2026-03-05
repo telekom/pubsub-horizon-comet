@@ -121,7 +121,9 @@ public class DeliveryTask implements Runnable {
 
             addTracing();
 
-            deliverySpan.annotate(String.format("waited %d milliseconds for backoff", backoffInterval));
+            if (backoffInterval != 0) {
+                deliverySpan.annotate(String.format("waited %d milliseconds for backoff", backoffInterval));
+            }
 
             if (isCircuitBreakerOpenOrChecking(subscriptionEventMessage.getSubscriptionId())) {
                 status = Status.WAITING;
