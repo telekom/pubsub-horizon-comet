@@ -76,6 +76,10 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
             log.error("Could not parse SubscriptionEventMessage. Record {} can not be processed", record);
         } catch (Exception e) {
             log.error("Unexpected error occurred while handle message {}", record.key(), e);
+
+            if (e instanceof RejectedExecutionException) {
+                nackDueToTaskFailureCounter.increment();
+            }
         }
 
         return null;
@@ -100,9 +104,6 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
             acknowledgment.nack(Duration.of(5000, ChronoUnit.MILLIS));
 
             nackCounter.increment();
-            if (ex instanceof RejectedExecutionException) {
-                nackDueToTaskFailureCounter.increment();
-            }
 
             return;
         }
