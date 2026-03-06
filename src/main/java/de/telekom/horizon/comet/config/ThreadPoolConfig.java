@@ -1,0 +1,72 @@
+// Copyright 2024 Deutsche Telekom IT GmbH
+//
+// SPDX-License-Identifier: Apache-2.0
+
+package de.telekom.horizon.comet.config;
+
+import de.telekom.horizon.comet.service.BoundedScheduledExecutorService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.jvm.ExecutorServiceMetrics;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+import io.micrometer.core.instrument.binder.MeterBinder;
+import org.springframework.beans.factory.annotation.Qualifier;
+
+import java.util.Collections;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
+
+@Configuration
+@EnableScheduling
+public class ThreadPoolConfig {
+
+    @Autowired
+    private CometConfig cometConfig;
+
+    @Bean(name = "deliveryTaskExecutor")
+    public ThreadPoolTaskExecutor deliveryTaskExecutor() {
+        ThreadPoolTaskExecutor deliveryTaskExecutor = new ThreadPoolTaskExecutor();
+
+        deliveryTaskExecutor.setAwaitTerminationSeconds(20);
+        deliveryTaskExecutor.setCorePoolSize(cometConfig.getConsumerThreadPoolSize());
+        deliveryTaskExecutor.setMaxPoolSize(cometConfig.getConsumerThreadPoolSize());
+        deliveryTaskExecutor.setQueueCapacity(cometConfig.getConsumerQueueCapacity());
+
+        return deliveryTaskExecutor;
+    }
+
+    @Bean
+    public MeterBinder deliveryExecutorMetrics(
+            @Qualifier("deliveryTaskExecutor") ThreadPoolTaskExecutor deliveryTaskExecutor) {
+        return registry -> ExecutorServiceMetrics.monitor(registry,
+                deliveryTaskExecutor.getThreadPoolExecutor(), "deliveryTaskExecutor", Collections.emptyList());
+    }
+
+    @Bean(name = "redeliveryExecutorService")
+    public ScheduledExecutorService redeliveryScheduledExecutorService(MeterRegistry meterRegistry) {
+        ScheduledThreadPoolExecutor redeliveryTaskExecutor = new ScheduledThreadPoolExecutor(
+                cometConfig.getRedeliveryThreadPoolSize(),
+                new ThreadPoolExecutor.AbortPolicy()
+        );
+
+        redeliveryTaskExecutor.setRemoveOnCancelPolicy(true);
+        redeliveryTaskExecutor.allowCoreThreadTimeOut(true);
+        redeliveryTaskExecutor.setKeepAliveTime(20, java.util.concurrent.TimeUnit.SECONDS);
+
+        redeliveryTaskExecutor.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
+        redeliveryTaskExecutor.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
+
+        BoundedScheduledExecutorService boundedExecutor = new BoundedScheduledExecutorService(redeliveryTaskExecutor,
+                cometConfig.getRedeliveryQueueCapacity(), meterRegistry);
+
+        ExecutorServiceMetrics.monitor(meterRegistry, redeliveryTaskExecutor, "redeliveryTaskExecutor", Collections.emptyList());
+
+        return boundedExecutor;
+    }
+
+}

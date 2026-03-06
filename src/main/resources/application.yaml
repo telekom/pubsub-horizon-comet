@@ -28,6 +28,9 @@ comet:
     client-secret: ${IRIS_CLIENT_SECRET:default=supersecret}
     # hard code cron statement here to enable configuration (and disablement in integration tests)
     cronTokenFetch: "0 */4 * * * *"
+    token-retry:
+      max-attempts: 3
+      backoff-delay-ms: 1000
   security:
     # Must be lower-case and comma-separated, can be regex
     headerPropagationBlacklist: ${COMET_HEADER_PROPAGATION_BLACKLIST:x-spacegate-token,authorization,content-length,host,accept.*,x-forwarded.*,cookie}
@@ -44,6 +47,9 @@ comet:
     redelivery-status-codes: ${COMET_REDELIVERY_STATUS_CODES:401,429,502,503,504}
     redelivery-threadpool-size: ${COMET_REDELIVERY_THREADPOOL_SIZE:10}
     redelivery-queue-capacity: ${COMET_REDELIVERY_QUEUE_CAPACITY:2147483647}
+  backpressure:
+    delivery-pool-utilization:
+      resume-check-interval-ms: 5000
 
 management:
   endpoints:

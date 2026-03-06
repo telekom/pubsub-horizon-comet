@@ -5,11 +5,22 @@
 package de.telekom.horizon.comet.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.telekom.horizon.comet.config.rest.AuthProperties;
 import de.telekom.horizon.comet.exception.BadTokenResponseException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import de.telekom.horizon.comet.exception.TokenRequestErrorException;
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClientException;
@@ -19,45 +30,36 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The {@code OAuth2TokenCache} class is responsible for caching and managing OAuth2 access tokens.
  * The class supports multiple environments with different client secrets.
  */
 @Slf4j
+@Service
+@RequiredArgsConstructor
 public class OAuth2TokenCache {
+
     public static final String IRIS_REALM_PLACEHOLDER = "<realm>";
     public static final String DEFAULT_REALM = "default";
     private static final String GRANT_TYPE_FIELD = "grant_type";
     private static final String GRANT_TYPE = "client_credentials";
     private static final String CLIENT_ID_FIELD = "client_id";
     private static final String CLIENT_SECRET_FIELD = "client_secret";
-    private final RestTemplate restTemplate;
+
+    private final AuthProperties authProperties;
     private final ObjectMapper objectMapper;
-    private final String accessTokenUrl;
-    private final String clientId;
+    private final RestTemplate restTemplate;
+
     private final Map<String, String> clientSecretMap = new HashMap<>();
-    private final Map<String, AccessToken> accessTokenMap = new HashMap<>();
+    private final Map<String, AccessToken> accessTokenMap = new ConcurrentHashMap<>();
     private Boolean internalIssueDetected = false;
 
-    /**
-     * Constructs a new {@code OAuth2TokenCache} instance with the specified parameters.
-     *
-     * @param accessTokenUrl The URL of the OAuth 2.0 token endpoint.
-     * @param clientId       The clientID used for authentication.
-     * @param clientSecret   The client secret used for authentication. Can contain multiple secrets separated by commas in the form of "key1=value1,key2=value2".
-     * @param objectMapper   The object mapper used to parse the response from the token endpoint.
-     * @param restTemplate   The RestTemplate used for making HTTP requests to the token endpoint.
-     *                       It should be configured with appropriate settings like connection
-     *                       timeouts, proxy settings, etc.
-     */
-    public OAuth2TokenCache(String accessTokenUrl, String clientId, String clientSecret, ObjectMapper objectMapper, RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
-        this.objectMapper = objectMapper;
-        this.accessTokenUrl = accessTokenUrl;
-        this.clientId = clientId;
 
-        Arrays.stream(clientSecret.split(",")).
+    @PostConstruct
+    public void init() {
+        Arrays.stream(authProperties.getClientSecret().split(",")).
                 forEach(s -> this.clientSecretMap.put(s.split("=")[0], s.split("=")[1]));
     }
 
@@ -66,15 +68,39 @@ public class OAuth2TokenCache {
      *
      * @param environment The environment for which to retrieve the access token.
      * @return The OAuth2 access token.
+     * @throws CouldNotFetchAccessTokenException If an error occurs during access token retrieval.
      */
-    public synchronized String getToken(String environment) throws CouldNotFetchAccessTokenException {
-        if (!clientSecretMap.containsKey(environment)){
-            environment = DEFAULT_REALM;
+    @Retryable(
+            retryFor = CouldNotFetchAccessTokenException.class,
+            maxAttemptsExpression = "${comet.oidc.token-retry.max-attempts}",
+            backoff = @Backoff(delayExpression = "${comet.oidc.token-retry.backoff-delay-ms}")
+    )
+    public String getToken(String environment) throws CouldNotFetchAccessTokenException {
+        final String finalEnv = clientSecretMap.containsKey(environment) ? environment : DEFAULT_REALM;
+
+        AccessToken token;
+        try {
+            token = accessTokenMap.compute(finalEnv, (key, existingToken) -> {
+                // Double-check inside the atomic operation
+                if (existingToken == null || existingToken.isExpired()) {
+                    try {
+                        return retrieveAccessToken(finalEnv);
+                    } catch (CouldNotFetchAccessTokenException e) {
+                        // Wrap the checked exception in an unchecked one to pass through lambda
+                        throw new RuntimeException(e);
+                    }
+                }
+                return existingToken;
+            });
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof CouldNotFetchAccessTokenException) {
+                throw (CouldNotFetchAccessTokenException) e.getCause();
+            }
+            throw e;
         }
-        if (isNotValidToken(environment)) {
-            retrieveAccessToken(environment);
-        }
-        return accessTokenMap.get(environment).getToken();
+
+
+        return token.getToken();
     }
 
     /**
@@ -96,8 +122,8 @@ public class OAuth2TokenCache {
      * @throws CouldNotFetchAccessTokenException If an error occurs while fetching any of the access tokens.
      */
     public void retrieveAllAccessTokens() throws CouldNotFetchAccessTokenException {
-        for(var environment : clientSecretMap.keySet()) {
-            retrieveAccessToken(environment);
+        for (var environment : clientSecretMap.keySet()) {
+            accessTokenMap.put(environment, retrieveAccessToken(environment));
         }
 
         setInternalIssueDetected(false);
@@ -111,20 +137,20 @@ public class OAuth2TokenCache {
      * @param environment The environment for which to retrieve the access token.
      * @throws CouldNotFetchAccessTokenException If an error occurs during access token retrieval.
      */
-    public void retrieveAccessToken(String environment) throws CouldNotFetchAccessTokenException {
+    public AccessToken retrieveAccessToken(String environment) throws CouldNotFetchAccessTokenException {
         var secret = clientSecretMap.get(environment);
-        var exchangeUrl = accessTokenUrl.replace(IRIS_REALM_PLACEHOLDER, environment);
+        var exchangeUrl = authProperties.getTokenUri().replace(IRIS_REALM_PLACEHOLDER, environment);
         log.info("Trying to retrieve oidc token from {} for realm {}", exchangeUrl, environment);
 
         final ResponseEntity<String> response;
         try {
-             response = restTemplate.exchange(exchangeUrl, HttpMethod.POST, createRequest(secret), String.class);
+            response = restTemplate.exchange(exchangeUrl, HttpMethod.POST, createRequest(secret), String.class);
         } catch (RestClientException e) {
             log.error("Error retrieving access tokens", e);
             throw new CouldNotFetchAccessTokenException(e);
         }
 
-        accessTokenMap.put(environment, convertResponseToAccessToken(response));
+        return convertResponseToAccessToken(response);
     }
 
     /**
@@ -169,7 +195,7 @@ public class OAuth2TokenCache {
     private HttpHeaders createHeader() {
         final var headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        headers.setBearerAuth(accessTokenUrl);
+        headers.setBearerAuth(authProperties.getTokenUri());
         return headers;
     }
 
@@ -182,7 +208,7 @@ public class OAuth2TokenCache {
     private MultiValueMap<String, String> createBody(String secret) {
         final MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add(GRANT_TYPE_FIELD, GRANT_TYPE);
-        body.add(CLIENT_ID_FIELD, clientId);
+        body.add(CLIENT_ID_FIELD, authProperties.getClientId());
         body.add(CLIENT_SECRET_FIELD, secret);
         return body;
     }
@@ -210,7 +236,7 @@ public class OAuth2TokenCache {
      * @return true if the access token cache is valid, false otherwise.
      */
     public boolean isAccessTokenCacheValid() {
-        if(Boolean.TRUE.equals(internalIssueDetected)) {
+        if (Boolean.TRUE.equals(internalIssueDetected)) {
             return false;
         }
 
@@ -228,7 +254,12 @@ public class OAuth2TokenCache {
      * @param hasIssue true if there is an issue with the cache, false otherwise.
      */
     public void setInternalIssueDetected(boolean hasIssue) {
-        this.internalIssueDetected  = hasIssue;
+        this.internalIssueDetected = hasIssue;
 
     }
+
+    void resetTokenMap() {
+        accessTokenMap.clear();
+    }
+
 }
