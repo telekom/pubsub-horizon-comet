@@ -87,7 +87,7 @@ public class ThreadPoolBackpressureHandler implements RejectedExecutionHandler {
 
     /**
      * Periodically monitors thread pool utilization and triggers backpressure events.
-     * Runs every 500ms to detect saturation quickly without excessive overhead.
+     * Runs by default every 5000ms to detect saturation quickly without excessive overhead.
      */
     @Scheduled(fixedDelayString = "${comet.backpressure.delivery-pool-utilization.resume-check-interval-ms}")
     public void monitorPoolUtilization() {
@@ -96,8 +96,7 @@ public class ThreadPoolBackpressureHandler implements RejectedExecutionHandler {
         }
 
         double utilization = getDeliveryPoolUtilization();
-        if (utilization < resumeThreshold) {
-            paused.set(false);
+        if (utilization < resumeThreshold && paused.compareAndSet(true, false)) {
             onBackpressureEvent(BackpressureEvent.RESUME);
             log.info("Kafka listener container resumed after thread pool capacity recovered.");
         }
