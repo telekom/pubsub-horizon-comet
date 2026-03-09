@@ -5,6 +5,7 @@
 package de.telekom.horizon.comet.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.telekom.horizon.comet.config.rest.AuthProperties;
 import de.telekom.horizon.comet.exception.BadTokenResponseException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import de.telekom.horizon.comet.exception.TokenRequestErrorException;
@@ -35,13 +36,22 @@ class OAuth2TokenCacheTest {
 
     String invalidTokenResponse = "foo: bar";
 
+    AuthProperties authProperties = new AuthProperties();
+
+    {
+        authProperties.setTokenUri("");
+        authProperties.setClientId("");
+        authProperties.setClientSecret("foo=bar");
+    }
+
+
     @Test
     void shouldRetrieveAccessTokenSuccessfully() {
         RestTemplate restTemplateMock = mock(RestTemplate.class);
 
         when(restTemplateMock.exchange(any(String.class), any(HttpMethod.class), any(HttpEntity.class), eq(String.class))).thenReturn(new ResponseEntity<>(validTokenResponse, HttpStatus.OK));
 
-        OAuth2TokenCache oAuth2TokenCache = new OAuth2TokenCache("", "", "foo=bar", objectMapper, restTemplateMock);
+        OAuth2TokenCache oAuth2TokenCache = new OAuth2TokenCache(authProperties, objectMapper, restTemplateMock);
 
         assertDoesNotThrow(() -> oAuth2TokenCache.retrieveAccessToken("testEnvironment"));
     }
@@ -52,7 +62,7 @@ class OAuth2TokenCacheTest {
 
         when(restTemplateMock.exchange(any(String.class), any(HttpMethod.class), any(HttpEntity.class), eq(String.class))).thenThrow(new RestClientException("message"));
 
-        OAuth2TokenCache oAuth2TokenCache = new OAuth2TokenCache("", "", "foo=bar", objectMapper, restTemplateMock);
+        OAuth2TokenCache oAuth2TokenCache = new OAuth2TokenCache(authProperties, objectMapper, restTemplateMock);
 
         assertThrows(CouldNotFetchAccessTokenException.class, () -> oAuth2TokenCache.retrieveAccessToken("testEnvironment"));
     }
@@ -63,7 +73,7 @@ class OAuth2TokenCacheTest {
 
         when(restTemplateMock.exchange(any(String.class), any(HttpMethod.class), any(HttpEntity.class), eq(String.class))).thenReturn(new ResponseEntity<>(validTokenResponse, HttpStatus.UNAUTHORIZED));
 
-        OAuth2TokenCache oAuth2TokenCache = new OAuth2TokenCache("", "", "foo=bar", objectMapper, restTemplateMock);
+        OAuth2TokenCache oAuth2TokenCache = new OAuth2TokenCache(authProperties, objectMapper, restTemplateMock);
 
         assertThrows(TokenRequestErrorException.class, () -> oAuth2TokenCache.retrieveAccessToken("testEnvironment"));
     }
@@ -74,7 +84,7 @@ class OAuth2TokenCacheTest {
 
         when(restTemplateMock.exchange(any(String.class), any(HttpMethod.class), any(HttpEntity.class), eq(String.class))).thenReturn(new ResponseEntity<>(invalidTokenResponse, HttpStatus.OK));
 
-        OAuth2TokenCache oAuth2TokenCache = new OAuth2TokenCache("", "", "foo=bar", objectMapper, restTemplateMock);
+        OAuth2TokenCache oAuth2TokenCache = new OAuth2TokenCache(authProperties, objectMapper, restTemplateMock);
 
         assertThrows(BadTokenResponseException.class, () -> oAuth2TokenCache.retrieveAccessToken("testEnvironment"));
     }

@@ -58,4 +58,10 @@ public class CometConfig {
 
     @Value("${comet.callback.redelivery-queue-capacity}")
     private int redeliveryQueueCapacity;
+
+    @Value("${comet.oidc.token-retry.max-attempts:3}")
+    private int tokenRetryMaxAttempts;
+
+    @Value("${comet.oidc.token-retry.backoff-delay-ms:1000}")
+    private int tokenRetryBackoffDelayMs;
 }

@@ -53,14 +53,14 @@ public class RestClient {
     /**
      * Construct of a new {@code RestClient} with the specified params.
      *
-     * @param cometConfig The CometConfig instance for retrieving configuration parameters.
-     * @param tracer The HorizonTracer instance for retrieving tracing headers.
+     * @param cometConfig      The CometConfig instance for retrieving configuration parameters.
+     * @param tracer           The HorizonTracer instance for retrieving tracing headers.
      * @param oAuth2TokenCache The OAuth2TokenCache instance for retrieving OAuth2 access tokens.
-     * @param httpClient The CloseableHttpClient instance for making HTTP requests.
-     * @param objectMapper The ObjectMapper instance for JSON serialization and deserialization.
+     * @param httpClient       The CloseableHttpClient instance for making HTTP requests.
+     * @param objectMapper     The ObjectMapper instance for JSON serialization and deserialization.
      */
     @Autowired
-    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CallbackUrlCache callbackUrlCache,CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
+    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CallbackUrlCache callbackUrlCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
 
@@ -96,7 +96,7 @@ public class RestClient {
                 // If token retrieval fails, the application will not be able to deliver events
                 log.error("Error retrieving access tokens", e);
             }
-        } while(retryCount < 5);
+        } while (retryCount < 5);
 
         // Close the application after 5 attempts to get the accessTokens
         SpringApplication.exit(context, () -> -2);
@@ -108,10 +108,10 @@ public class RestClient {
      *
      * @param subscriptionEventMessage The subscription event message to be delivered.
      * @param callbackUrl              The callbackUrl to which the event should be sent.
-     * @throws CallbackException       If there is an error during the callback process.
-     * @throws IOException             If an IO error occurs while making the HTTP request.
+     * @throws CallbackException If there is an error during the callback process.
+     * @throws IOException       If an IO error occurs while making the HTTP request.
      */
-    public void callback(SubscriptionEventMessage subscriptionEventMessage, String callbackUrl, ApplicationContext context) throws CallbackException, IOException, CouldNotFetchAccessTokenException {
+    public void callback(SubscriptionEventMessage subscriptionEventMessage, String callbackUrl) throws CallbackException, IOException, CouldNotFetchAccessTokenException {
         var request = new HttpPost(callbackUrl);
         var event = subscriptionEventMessage.getEvent();
 

@@ -57,10 +57,11 @@ class RestClientTest extends AbstractIntegrationTest {
     ApplicationContext context;
 
     RestClient restClient;
+
     @BeforeEach
     void initMock() throws IOException, InterruptedException {
         when(cometConfig.getSuccessfulStatusCodes()).thenReturn(List.of(200, 201, 202, 204));
-        when(cometConfig.getHeaderPropagationBlacklist()).thenReturn(List.of("x-spacegate-token","authorization","content-length","host","accept.*","x-forwarded.*"));
+        when(cometConfig.getHeaderPropagationBlacklist()).thenReturn(List.of("x-spacegate-token", "authorization", "content-length", "host", "accept.*", "x-forwarded.*"));
         when(closeableHttpResponse.getStatusLine()).thenReturn(statusLine);
         when(closeableHttpClient.execute(any())).thenReturn(closeableHttpResponse);
         this.restClient = spy(new RestClient(cometConfig, horizonTracer, oAuth2TokenCache, callbackUrlCache, closeableHttpClient, new ObjectMapper(), context));
@@ -73,7 +74,7 @@ class RestClientTest extends AbstractIntegrationTest {
         when(statusLine.getStatusCode()).thenReturn(httpStatus.value());
 
         var subscriptionMessage = HorizonTestHelper.createDefaultSubscriptionEventMessage("successull", getEventType());
-        assertDoesNotThrow(() -> restClient.callback(generateCallbackSubscriptionEventMessage(), "https://test.de", context));
+        assertDoesNotThrow(() -> restClient.callback(generateCallbackSubscriptionEventMessage(), "https://test.de"));
 
         // check if internal headers are not in request
         verify(closeableHttpClient).execute(argThat(request -> {
@@ -102,7 +103,7 @@ class RestClientTest extends AbstractIntegrationTest {
     void throwCallbackExceptionForUnsuccessfulRequest(HttpStatus httpStatus) {
         when(statusLine.getStatusCode()).thenReturn(httpStatus.value());
 
-        var callbackException = assertThrows(CallbackException.class, () -> restClient.callback(generateCallbackSubscriptionEventMessage(), "https://test.de", context));
+        var callbackException = assertThrows(CallbackException.class, () -> restClient.callback(generateCallbackSubscriptionEventMessage(), "https://test.de"));
         assertEquals(httpStatus.value(), callbackException.getStatusCode());
     }
 
