@@ -47,7 +47,6 @@ public class KafkaConsumerConfig {
      * @param consumerFactory               The factory for creating Kafka consumers.
      * @return The configured {@code ConcurrentMessageListenerContainer}.
      */
-    @Autowired
     @DependsOn(value = {"hazelcastInstance"})
     @Bean
     public ConcurrentMessageListenerContainer<String, String> concurrentMessageListenerContainer(SubscribedEventMessageHandler subscribedEventMessageHandler,
