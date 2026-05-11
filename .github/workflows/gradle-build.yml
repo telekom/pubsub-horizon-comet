@@ -27,7 +27,7 @@ jobs:
         uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3
 
       - name: Execute Gradle build
-        run: ./gradlew build
+        run: ./gradlew build --stacktrace
 
       - name: Add coverage to PR
         id: jacoco
