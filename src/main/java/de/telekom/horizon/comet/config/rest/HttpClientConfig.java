@@ -68,7 +68,7 @@ public class HttpClientConfig {
                 .build();
     }
 
-    @Bean
+
     public PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager() {
         return PoolingAsyncClientConnectionManagerBuilder.create()
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
@@ -84,14 +84,14 @@ public class HttpClientConfig {
                 .build();
     }
 
-    @Bean
+
     public IOReactorConfig ioReactorConfig() {
         return IOReactorConfig.custom()
                 .setSoTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
                 .build();
     }
 
-    @Bean
+
     public CloseableHttpAsyncClient httpAsyncClient(
             PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager,
             RequestConfig requestConfig,

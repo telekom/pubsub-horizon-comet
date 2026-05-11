@@ -8,7 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
-import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
@@ -16,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.http.message.BasicHeader;
@@ -59,7 +59,7 @@ public class RestClient {
      * @param objectMapper     The ObjectMapper instance for JSON serialization and deserialization.
      */
     @Autowired
-    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CallbackUrlCache callbackUrlCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
+    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
 
