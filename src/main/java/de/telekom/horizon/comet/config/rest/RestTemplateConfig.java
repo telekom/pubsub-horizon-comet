@@ -8,6 +8,7 @@ import de.telekom.horizon.comet.config.CometConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
@@ -38,7 +39,7 @@ public class RestTemplateConfig {
      */
     @Bean
     public RestTemplate restTemplate() {
-        return new RestTemplate(getClientHttpRequestFactory());
+        return new RestTemplate(getHttpComponentsClientHttpRequestFactory());
     }
 
     /**
@@ -53,5 +54,13 @@ public class RestTemplateConfig {
         clientHttpRequestFactory.setReadTimeout(cometConfig.getRetrieveTokenReadTimeout());
 
         return clientHttpRequestFactory;
+    }
+
+    private HttpComponentsClientHttpRequestFactory getHttpComponentsClientHttpRequestFactory() {
+        var httpComponentsClientHttpRequestFactory = new HttpComponentsClientHttpRequestFactory();
+        httpComponentsClientHttpRequestFactory.setConnectTimeout(cometConfig.getRetrieveTokenConnectTimeout());
+        httpComponentsClientHttpRequestFactory.setReadTimeout(cometConfig.getRetrieveTokenReadTimeout());
+
+        return httpComponentsClientHttpRequestFactory;
     }
 }

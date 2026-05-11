@@ -42,7 +42,6 @@ import java.util.Optional;
  */
 @Component
 @Slf4j
-@Primary
 public class RestClient {
 
     private final OAuth2TokenCache oAuth2TokenCache;
