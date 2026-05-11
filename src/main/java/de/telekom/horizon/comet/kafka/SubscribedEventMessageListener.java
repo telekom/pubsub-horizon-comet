@@ -11,12 +11,11 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.springframework.kafka.listener.AbstractConsumerSeekAware;
 import org.springframework.kafka.listener.BatchAcknowledgingMessageListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.kafka.support.SendResult;
-import org.springframework.lang.NonNull;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
@@ -92,7 +91,7 @@ public class SubscribedEventMessageListener extends AbstractConsumerSeekAware im
      * @param acknowledgment The Acknowledgment to acknowledge or nack the batch.
      */
     @Override
-    public void onMessage(@NotNull List<ConsumerRecord<String, String>> records, @NotNull Acknowledgment acknowledgment) {
+    public void onMessage(@NonNull List<ConsumerRecord<String, String>> records, @NonNull Acknowledgment acknowledgment) {
         List<String> eventUuids = records.stream().map(ConsumerRecord::key).toList();
         try {
             var afterDeliveringSendFutures = records.stream().map(this::onMessage).filter(Objects::nonNull).toList();
