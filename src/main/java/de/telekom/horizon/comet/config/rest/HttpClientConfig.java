@@ -78,8 +78,8 @@ public class HttpClientConfig {
                         .setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_2)
                         .setHandshakeTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
                         .build())
-                .setMessageMultiplexing(true)
                 .setMaxConnTotal(cometConfig.getMaxConnections())
+                //todo: some other sensible value is needed
                 .setMaxConnPerRoute(cometConfig.getMaxConnections())
                 .build();
     }
