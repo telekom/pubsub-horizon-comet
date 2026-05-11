@@ -62,17 +62,17 @@ public class RestClient {
      * @param objectMapper     The ObjectMapper instance for JSON serialization and deserialization.
      */
     @Autowired
-    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache,  CallbackUrlCache callbackUrlCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
+    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CallbackUrlCache callbackUrlCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
 
         this.oAuth2TokenCache = oAuth2TokenCache;
+        this.callbackUrlCache = callbackUrlCache;
 
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
 
         this.context = context;
-        this.callbackUrlCache = callbackUrlCache;
 
         retrieveAllAccessTokens(context);
 

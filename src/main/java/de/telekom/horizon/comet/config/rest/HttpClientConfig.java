@@ -118,6 +118,7 @@ public class HttpClientConfig {
                 .setConnectionManager(poolingHttpClientConnectionManager)
                 .setDefaultRequestConfig(requestConfig)
                 .disableCookieManagement()
+                .disableAutomaticRetries()
                 .build();
     }
 }
