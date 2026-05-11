@@ -23,6 +23,7 @@ import org.apache.hc.core5.http.message.BasicHeader;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -41,6 +42,7 @@ import java.util.Optional;
  */
 @Component
 @Slf4j
+@Primary
 public class RestClient {
 
     private final OAuth2TokenCache oAuth2TokenCache;
