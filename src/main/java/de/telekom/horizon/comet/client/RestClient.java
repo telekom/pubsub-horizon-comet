@@ -132,13 +132,14 @@ public class RestClient {
      * @throws CallbackException If the response status code is not acceptable.
      */
     private void executeRequest(String callbackUrl, HttpPost request) throws IOException, CallbackException {
-        final var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
-        final var statusCodeReasonPhrase = httpClient.execute(request, response ->
-                ImmutablePair.of(response.getCode(), response.getReasonPhrase()));
-        if (!successfulStatusCodes.contains(statusCodeReasonPhrase.left)) {
-            throw new CallbackException(
-                    String.format("Error while delivering event to callback '%s': %s", callbackUrl, statusCodeReasonPhrase.right),
-                    statusCodeReasonPhrase.left);
+        try (var response = httpClient.execute(request)) {
+            // Compare response status code with acceptable status codes from config
+            var statusCode = response.getCode();
+            var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
+
+            if (!successfulStatusCodes.contains(statusCode)) {
+                throw new CallbackException(String.format("Error while delivering event to callback '%s': %s", callbackUrl, response.getReasonPhrase()), statusCode);
+            }
         }
     }
 
