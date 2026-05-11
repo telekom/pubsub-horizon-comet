@@ -5,10 +5,19 @@
 package de.telekom.horizon.comet.config.rest;
 
 import de.telekom.horizon.comet.config.CometConfig;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.config.TlsConfig;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
+import org.apache.hc.core5.http2.HttpVersionPolicy;
+import org.apache.hc.core5.reactor.IOReactorConfig;
+import org.apache.hc.core5.util.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -55,9 +64,43 @@ public class HttpClientConfig {
     @Bean
     public RequestConfig requestConfig() {
         return RequestConfig.custom()
-                .setConnectionRequestTimeout((int) cometConfig.getMaxTimeout())
-                .setConnectTimeout((int) cometConfig.getMaxTimeout())
-                .setSocketTimeout((int) cometConfig.getMaxTimeout())
+                .setConnectionRequestTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
+                .build();
+    }
+
+    @Bean
+    public PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager() {
+        return PoolingAsyncClientConnectionManagerBuilder.create()
+                .setDefaultConnectionConfig(ConnectionConfig.custom()
+                        .setConnectTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
+                        .build())
+                .setDefaultTlsConfig(TlsConfig.custom()
+                        .setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_2)
+                        .setHandshakeTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
+                        .build())
+                .setMessageMultiplexing(true)
+                .setMaxConnTotal(cometConfig.getMaxConnections())
+                .setMaxConnPerRoute(cometConfig.getMaxConnections())
+                .build();
+    }
+
+    @Bean
+    public IOReactorConfig ioReactorConfig() {
+        return IOReactorConfig.custom()
+                .setSoTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
+                .build();
+    }
+
+    @Bean
+    public CloseableHttpAsyncClient httpAsyncClient(
+            PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager,
+            RequestConfig requestConfig,
+            IOReactorConfig ioReactorConfig) {
+        return HttpAsyncClients.custom()
+                .setConnectionManager(poolingAsyncClientConnectionManager)
+                .setIOReactorConfig(ioReactorConfig)
+                .setDefaultRequestConfig(requestConfig)
+                .disableCookieManagement()
                 .build();
     }
 

@@ -13,11 +13,12 @@ import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpRequestBase;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.message.BasicHeader;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.hc.client5.http.classic.methods.HttpPost;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.http.message.BasicHeader;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
@@ -134,14 +135,13 @@ public class RestClient {
      * @throws CallbackException If the response status code is not acceptable.
      */
     private void executeRequest(String callbackUrl, HttpPost request) throws IOException, CallbackException {
-        try (var response = httpClient.execute(request)) {
-            // Compare response status code with acceptable status codes from config
-            var statusCode = response.getStatusLine().getStatusCode();
-            var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
-
-            if (!successfulStatusCodes.contains(statusCode)) {
-                throw new CallbackException(String.format("Error while delivering event to callback '%s': %s", callbackUrl, response.getStatusLine().getReasonPhrase()), statusCode);
-            }
+        final var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
+        final var statusCodeReasonPhrase = httpClient.execute(request, response ->
+                ImmutablePair.of(response.getCode(), response.getReasonPhrase()));
+        if (!successfulStatusCodes.contains(statusCodeReasonPhrase.left)) {
+            throw new CallbackException(
+                    String.format("Error while delivering event to callback '%s': %s", callbackUrl, statusCodeReasonPhrase.right),
+                    statusCodeReasonPhrase.left);
         }
     }
 
@@ -152,7 +152,7 @@ public class RestClient {
      * @param key     The header key to be overridden.
      * @param value   The new value for the header.
      */
-    private void overrideHeader(HttpRequestBase request, String key, String value) {
+    private void overrideHeader(HttpUriRequestBase request, String key, String value) {
         request.removeHeaders(key);
         request.setHeader(new BasicHeader(key, value));
     }

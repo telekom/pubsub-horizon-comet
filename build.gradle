@@ -62,11 +62,12 @@ dependencies {
     annotationProcessor "org.projectlombok:lombok:"
     compileOnly "org.projectlombok:lombok:"
     testCompileOnly "org.projectlombok:lombok:"
-    implementation("org.apache.httpcomponents:httpclient:${httpClientVersion}") {exclude group: 'commons-logging'}
+    implementation("org.apache.httpcomponents.client5:httpclient5:${httpClientVersion}")
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     testImplementation "org.mockito:mockito-inline:${mockitoInlineVersion}"
     testImplementation "org.awaitility:awaitility:${awaitilityVersion}"
     testImplementation ("org.wiremock:wiremock-standalone:${wiremockStandaloneVersion}")
+    testImplementation("commons-codec:commons-codec:${commonsCodecVersion}")
 
     // ENI
     implementation "de.telekom.eni:horizon-spring-boot-starter:${horizonParentVersion}"
