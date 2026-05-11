@@ -64,7 +64,7 @@ class RestClientTest extends AbstractIntegrationTest {
         when(cometConfig.getSuccessfulStatusCodes()).thenReturn(List.of(200, 201, 202, 204));
         when(cometConfig.getHeaderPropagationBlacklist()).thenReturn(List.of("x-spacegate-token", "authorization", "content-length", "host", "accept.*", "x-forwarded.*"));
         when(closeableHttpClient.execute(any())).thenReturn(closeableHttpResponse);
-        this.restClient = spy(new RestClient(cometConfig, horizonTracer, oAuth2TokenCache, closeableHttpClient, new ObjectMapper(), context));
+        this.restClient = spy(new RestClient(cometConfig, horizonTracer, oAuth2TokenCache, callbackUrlCache, closeableHttpClient, new ObjectMapper(), context));
     }
 
     @ParameterizedTest(name = "Check Header for {0}")
