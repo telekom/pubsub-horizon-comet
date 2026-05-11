@@ -62,7 +62,7 @@ dependencies {
     annotationProcessor "org.projectlombok:lombok:"
     compileOnly "org.projectlombok:lombok:"
     testCompileOnly "org.projectlombok:lombok:"
-    implementation("org.apache.httpcomponents.client5:httpclient5:${httpClientVersion}")
+    implementation 'org.apache.httpcomponents.client5:httpclient5'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation ("org.jspecify:jspecify:${jspecifyVersion}")
     testImplementation "org.mockito:mockito-inline:${mockitoInlineVersion}"
