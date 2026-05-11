@@ -49,8 +49,6 @@ public class RestClient {
     private final ObjectMapper objectMapper;
     private final ApplicationContext context;
 
-    private final CallbackUrlCache callbackUrlCache;
-
     /**
      * Construct of a new {@code RestClient} with the specified params.
      *
@@ -66,7 +64,6 @@ public class RestClient {
         this.tracer = tracer;
 
         this.oAuth2TokenCache = oAuth2TokenCache;
-        this.callbackUrlCache = callbackUrlCache;
 
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
