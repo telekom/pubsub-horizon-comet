@@ -12,11 +12,15 @@ import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.message.BasicHeader;
+import org.apache.hc.core5.http.nio.AsyncRequestProducer;
+import org.apache.hc.core5.http.nio.entity.BasicAsyncEntityProducer;
+import org.apache.hc.core5.http.nio.entity.DiscardingEntityConsumer;
+import org.apache.hc.core5.http.nio.support.AsyncRequestBuilder;
+import org.apache.hc.core5.http.nio.support.BasicResponseConsumer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
@@ -30,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 
 /**
  * The {@code RestClient} class is responsible for sending subscription event messages
@@ -43,7 +48,7 @@ public class RestClient {
     private final OAuth2TokenCache oAuth2TokenCache;
     private final CometConfig cometConfig;
     private final HorizonTracer tracer;
-    private final CloseableHttpClient httpClient;
+    private final CloseableHttpAsyncClient httpClient;
     private final ObjectMapper objectMapper;
     private final ApplicationContext context;
 
@@ -57,7 +62,7 @@ public class RestClient {
      * @param objectMapper     The ObjectMapper instance for JSON serialization and deserialization.
      */
     @Autowired
-    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
+    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CloseableHttpAsyncClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
 
@@ -70,6 +75,7 @@ public class RestClient {
 
         retrieveAllAccessTokens(context);
 
+        this.httpClient.start();
     }
 
     /**
@@ -107,17 +113,15 @@ public class RestClient {
      * @throws CallbackException If there is an error during the callback process.
      * @throws IOException       If an IO error occurs while making the HTTP request.
      */
-    public void callback(SubscriptionEventMessage subscriptionEventMessage, String callbackUrl) throws CallbackException, IOException, CouldNotFetchAccessTokenException {
-        var request = new HttpPost(callbackUrl);
-        var event = subscriptionEventMessage.getEvent();
+    public void callback(final SubscriptionEventMessage subscriptionEventMessage, final String callbackUrl) throws CallbackException, IOException, CouldNotFetchAccessTokenException {
+        var payload = objectMapper.writeValueAsBytes(subscriptionEventMessage.getEvent());
 
-        addHeaderToRequest(request, subscriptionEventMessage.getHttpHeaders(), subscriptionEventMessage.getEnvironment());
+        var requestBuilder = AsyncRequestBuilder.post(callbackUrl);
+        addHeaderToRequest(requestBuilder, subscriptionEventMessage.getHttpHeaders(), subscriptionEventMessage.getEnvironment());
+        var request = requestBuilder
+                .setEntity(new BasicAsyncEntityProducer(payload, ContentType.APPLICATION_JSON))
+                .build();
 
-        // throws JsonProcessingException -> IOException
-        var payload = new StringEntity(objectMapper.writeValueAsString(event), StandardCharsets.UTF_8);
-        request.setEntity(payload);
-
-        // throws IOException
         executeRequest(callbackUrl, request);
     }
 
@@ -129,15 +133,23 @@ public class RestClient {
      * @throws IOException       If an IO error occurs during the HTTP request.
      * @throws CallbackException If the response status code is not acceptable.
      */
-    private void executeRequest(String callbackUrl, HttpPost request) throws IOException, CallbackException {
-        try (var response = httpClient.execute(request)) {
-            // Compare response status code with acceptable status codes from config
-            var statusCode = response.getCode();
-            var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
+    private void executeRequest(final String callbackUrl, final AsyncRequestProducer request) throws IOException, CallbackException {
+        var future = httpClient.execute(request, new BasicResponseConsumer<Void>(new DiscardingEntityConsumer<>()), null);
+        HttpResponse response;
+        try {
+            response = future.get().getHead();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Delivery request to '" + callbackUrl + "' was interrupted", e);
+        } catch (ExecutionException e) {
+            final var cause = e.getCause();
+            throw new IOException("Delivery request to '" + callbackUrl + "' failed", cause);
+        }
 
-            if (!successfulStatusCodes.contains(statusCode)) {
-                throw new CallbackException(String.format("Error while delivering event to callback '%s': %s", callbackUrl, response.getReasonPhrase()), statusCode);
-            }
+        final var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
+        final var statusCode = response.getCode();
+        if (!successfulStatusCodes.contains(statusCode)) {
+            throw new CallbackException("Error while delivering event to callback '" + callbackUrl + "': " + response.getReasonPhrase(), statusCode);
         }
     }
 
@@ -148,7 +160,7 @@ public class RestClient {
      * @param key     The header key to be overridden.
      * @param value   The new value for the header.
      */
-    private void overrideHeader(HttpUriRequestBase request, String key, String value) {
+    private void overrideHeader(AsyncRequestBuilder request, String key, String value) {
         request.removeHeaders(key);
         request.setHeader(new BasicHeader(key, value));
     }
@@ -156,25 +168,25 @@ public class RestClient {
     /**
      * Adds headers to the HTTP request based on the provided map and environment.
      *
-     * @param request     The HTTP request to which headers are added.
+     * @param requestBuilder     The HTTP request to which headers are added.
      * @param httpHeaders The map of headers to be added.
      * @param environment The environment for which headers are added.
      */
-    private void addHeaderToRequest(HttpPost request, Map<String, List<String>> httpHeaders, String environment) throws CouldNotFetchAccessTokenException {
+    private void addHeaderToRequest(AsyncRequestBuilder requestBuilder, Map<String, List<String>> httpHeaders, String environment) throws CouldNotFetchAccessTokenException {
         if (httpHeaders != null) {
             httpHeaders.forEach((k, v) -> {
                 if (cometConfig.getHeaderPropagationBlacklist().stream().noneMatch(k::matches)) {
-                    v.forEach(e -> request.addHeader(k, e));
+                    v.forEach(e -> requestBuilder.addHeader(k, e));
                 }
             });
         }
 
-        overrideHeader(request, HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
-        overrideHeader(request, HttpHeaders.AUTHORIZATION, "Bearer " + oAuth2TokenCache.getToken(Optional.ofNullable(environment).orElse("default")));
-        overrideHeader(request, HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
-        overrideHeader(request, HttpHeaders.ACCEPT_CHARSET, StandardCharsets.UTF_8.displayName());
+        overrideHeader(requestBuilder, HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        overrideHeader(requestBuilder, HttpHeaders.AUTHORIZATION, "Bearer " + oAuth2TokenCache.getToken(Optional.ofNullable(environment).orElse("default")));
+        overrideHeader(requestBuilder, HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+        overrideHeader(requestBuilder, HttpHeaders.ACCEPT_CHARSET, StandardCharsets.UTF_8.displayName());
 
-        tracer.getCurrentTracingHeaders().forEach((key, value) -> overrideHeader(request, key, value));
+        tracer.getCurrentTracingHeaders().forEach((key, value) -> overrideHeader(requestBuilder, key, value));
     }
 
     /**

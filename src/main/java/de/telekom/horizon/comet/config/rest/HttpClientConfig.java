@@ -8,6 +8,8 @@ import de.telekom.horizon.comet.config.CometConfig;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.config.TlsConfig;
+import org.apache.hc.client5.http.impl.DefaultClientConnectionReuseStrategy;
+import org.apache.hc.client5.http.impl.DefaultConnectionKeepAliveStrategy;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -16,6 +18,7 @@ import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
+import org.apache.hc.core5.http2.config.H2Config;
 import org.apache.hc.core5.reactor.IOReactorConfig;
 import org.apache.hc.core5.util.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,7 +51,7 @@ public class HttpClientConfig {
      *
      * @return The configured {@code PoolingHttpClientConnectionManager} bean.
      */
-    @Bean
+    //@Bean
     public PoolingHttpClientConnectionManager poolingHttpClientConnectionManager() {
         var connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(cometConfig.getMaxConnections());
@@ -68,7 +71,7 @@ public class HttpClientConfig {
                 .build();
     }
 
-
+    @Bean
     public PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager() {
         return PoolingAsyncClientConnectionManagerBuilder.create()
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
@@ -78,29 +81,38 @@ public class HttpClientConfig {
                         .setVersionPolicy(HttpVersionPolicy.FORCE_HTTP_2)
                         .setHandshakeTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
                         .build())
+                .setMessageMultiplexing(true)
                 .setMaxConnTotal(cometConfig.getMaxConnections())
-                //todo: some other sensible value is needed
-                .setMaxConnPerRoute(cometConfig.getMaxConnections())
+                //todo: with h2 we might as well want to go with the default 5 here, due to streams
+                //.setMaxConnPerRoute(cometConfig.getMaxConnections())
                 .build();
     }
 
-
+    @Bean
     public IOReactorConfig ioReactorConfig() {
         return IOReactorConfig.custom()
-                .setSoTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
                 .build();
     }
 
-
+    @Bean
     public CloseableHttpAsyncClient httpAsyncClient(
             PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager,
             RequestConfig requestConfig,
             IOReactorConfig ioReactorConfig) {
         return HttpAsyncClients.custom()
+                .setH2Config(H2Config
+                        .custom()
+                        .setInitialWindowSize(256*1024) // 256KiB window size
+                        .build())
                 .setConnectionManager(poolingAsyncClientConnectionManager)
                 .setIOReactorConfig(ioReactorConfig)
                 .setDefaultRequestConfig(requestConfig)
+                .setConnectionReuseStrategy(DefaultClientConnectionReuseStrategy.INSTANCE)
+                .evictExpiredConnections()
+                .evictIdleConnections(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
+                .setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
                 .disableCookieManagement()
+                .disableAutomaticRetries()
                 .build();
     }
 
@@ -111,7 +123,7 @@ public class HttpClientConfig {
      * @param requestConfig                      The RequestConfig bean.
      * @return The configured CloseableHttpClient bean.
      */
-    @Bean
+    //@Bean
     public CloseableHttpClient httpClient(PoolingHttpClientConnectionManager poolingHttpClientConnectionManager, RequestConfig requestConfig) {
         return HttpClientBuilder
                 .create()
