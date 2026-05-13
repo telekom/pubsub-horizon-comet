@@ -36,6 +36,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 /**
  * The {@code RestClient} class is responsible for sending subscription event messages
  * to the specified callbackUrl. The class manages OAuth2 token caching, HTTP client setup,
@@ -114,6 +116,7 @@ public class RestClient {
      * @throws IOException       If an IO error occurs while making the HTTP request.
      */
     public void callback(final SubscriptionEventMessage subscriptionEventMessage, final String callbackUrl) throws CallbackException, IOException, CouldNotFetchAccessTokenException {
+        // encodes the payload into UTF-8
         var payload = objectMapper.writeValueAsBytes(subscriptionEventMessage.getEvent());
 
         var requestBuilder = AsyncRequestBuilder.post(callbackUrl);
@@ -184,7 +187,7 @@ public class RestClient {
         overrideHeader(requestBuilder, HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
         overrideHeader(requestBuilder, HttpHeaders.AUTHORIZATION, "Bearer " + oAuth2TokenCache.getToken(Optional.ofNullable(environment).orElse("default")));
         overrideHeader(requestBuilder, HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
-        overrideHeader(requestBuilder, HttpHeaders.ACCEPT_CHARSET, StandardCharsets.UTF_8.displayName());
+        overrideHeader(requestBuilder, HttpHeaders.ACCEPT_CHARSET, UTF_8.displayName());
 
         tracer.getCurrentTracingHeaders().forEach((key, value) -> overrideHeader(requestBuilder, key, value));
     }
