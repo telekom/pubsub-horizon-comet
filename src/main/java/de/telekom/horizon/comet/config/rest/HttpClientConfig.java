@@ -68,7 +68,7 @@ public class HttpClientConfig {
                 .build();
     }
 
-    //@Bean
+    @Bean
     public PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager() {
         return PoolingAsyncClientConnectionManagerBuilder.create()
                 .setDefaultConnectionConfig(ConnectionConfig.custom()
@@ -93,21 +93,19 @@ public class HttpClientConfig {
 
     @Bean
     public CloseableHttpAsyncClient httpAsyncClient(
+            PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager,
             RequestConfig requestConfig,
             IOReactorConfig ioReactorConfig) {
-        final var client = HttpAsyncClients.customHttp2()
-                .setDefaultConnectionConfig(ConnectionConfig.custom()
-                        .setConnectTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
-                        .build())
+        final var client = HttpAsyncClients.custom()
                 /*.setH2Config(H2Config
                         .custom()
                         .setInitialWindowSize(256*1024) // 256KiB window size
                         .build())*/
-                //.setConnectionManager(poolingAsyncClientConnectionManager)
+                .setConnectionManager(poolingAsyncClientConnectionManager)
                 .setIOReactorConfig(ioReactorConfig)
                 .setDefaultRequestConfig(requestConfig)
                 //.setConnectionReuseStrategy(DefaultClientConnectionReuseStrategy.INSTANCE)
-                //.evictExpiredConnections()
+                .evictExpiredConnections()
                 .evictIdleConnections(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
                 //.setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
                 .disableCookieManagement()
