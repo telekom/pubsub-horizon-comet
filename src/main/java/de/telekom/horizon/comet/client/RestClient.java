@@ -146,6 +146,9 @@ public class RestClient {
             throw new IOException("Delivery request to '" + callbackUrl + "' was interrupted", e);
         } catch (ExecutionException e) {
             final var cause = e.getCause();
+            if (cause instanceof IOException ioException) {
+                throw ioException;
+            }
             throw new IOException("Delivery request to '" + callbackUrl + "' failed", cause);
         }
 
