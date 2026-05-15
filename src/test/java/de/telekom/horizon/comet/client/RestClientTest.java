@@ -9,6 +9,7 @@ import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.exception.CallbackException;
+import de.telekom.horizon.comet.service.DeliveryTask;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
 import de.telekom.horizon.comet.test.utils.HazelcastTestInstance;
 import de.telekom.horizon.comet.test.utils.ObjectGenerator;
@@ -69,15 +70,12 @@ class RestClientTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void initMock() throws InterruptedException, ExecutionException {
-        when(cometConfig.getSuccessfulStatusCodes()).thenReturn(List.of(200, 201, 202, 204));
         when(cometConfig.getHeaderPropagationBlacklist()).thenReturn(List.of("x-spacegate-token", "authorization", "content-length", "host", "accept.*", "x-forwarded.*"));
         when(closeableHttpClient
                 .execute(any(AsyncRequestProducer.class),
                         ArgumentMatchers.<AsyncResponseConsumer<Message<HttpResponse,Void>>>any(),
                         any()))
                 .thenReturn(responseFuture);
-        when(responseFuture.get()).thenReturn(responseMessage);
-        when(responseMessage.getHead()).thenReturn(response);
         this.restClient = spy(new RestClient(cometConfig, horizonTracer, oAuth2TokenCache, closeableHttpClient, new ObjectMapper(), context));
     }
 
@@ -85,7 +83,6 @@ class RestClientTest extends AbstractIntegrationTest {
     @EnumSource(value = HttpStatus.class, names = {"CREATED", "OK", "ACCEPTED", "NO_CONTENT"}, mode = EnumSource.Mode.INCLUDE)
     @DisplayName("Send successful callback without tardis headers")
     void sendSuccessfulRequestWithoutTardisHeader(HttpStatus httpStatus) throws IOException, HttpException {
-        when(response.getCode()).thenReturn(httpStatus.value());
         AtomicReference<HttpRequest> capturedRequest = new AtomicReference<>();
         doAnswer(invocation -> {
                     capturedRequest.set(invocation.getArgument(0));
@@ -94,7 +91,7 @@ class RestClientTest extends AbstractIntegrationTest {
                 .when(requestChannel)
                 .sendRequest(any(), any(), any());
 
-        assertDoesNotThrow(() -> restClient.callback(generateCallbackSubscriptionEventMessage(), "https://test.de"));
+        assertDoesNotThrow(() -> restClient.callback(generateCallbackSubscriptionEventMessage(), "https://test.de", null));
 
         // check if internal headers are not in request
         verify(closeableHttpClient).execute(
@@ -145,16 +142,6 @@ class RestClientTest extends AbstractIntegrationTest {
                 }),
                 ArgumentMatchers.<AsyncResponseConsumer<Message<HttpResponse,Void>>>any(),
                 any());
-    }
-
-    @ParameterizedTest(name = "Check CallbackException for {0}")
-    @EnumSource(value = HttpStatus.class, names = {"CREATED", "OK", "ACCEPTED", "NO_CONTENT"}, mode = EnumSource.Mode.EXCLUDE)
-    @DisplayName("Throw callbackException including the right status code for unsuccessful request")
-    void throwCallbackExceptionForUnsuccessfulRequest(HttpStatus httpStatus) {
-        when(response.getCode()).thenReturn(httpStatus.value());
-
-        var callbackException = assertThrows(CallbackException.class, () -> restClient.callback(generateCallbackSubscriptionEventMessage(), "https://test.de"));
-        assertEquals(httpStatus.value(), callbackException.getStatusCode());
     }
 
 }

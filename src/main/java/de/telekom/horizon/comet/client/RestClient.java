@@ -13,10 +13,11 @@ import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.core5.concurrent.FutureCallback;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpResponse;
+import org.apache.hc.core5.http.Message;
 import org.apache.hc.core5.http.message.BasicHeader;
-import org.apache.hc.core5.http.nio.AsyncRequestProducer;
 import org.apache.hc.core5.http.nio.entity.BasicAsyncEntityProducer;
 import org.apache.hc.core5.http.nio.entity.DiscardingEntityConsumer;
 import org.apache.hc.core5.http.nio.support.AsyncRequestBuilder;
@@ -30,11 +31,9 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -110,10 +109,13 @@ public class RestClient {
      *
      * @param subscriptionEventMessage The subscription event message to be delivered.
      * @param callbackUrl              The callbackUrl to which the event should be sent.
-     * @throws CallbackException If there is an error during the callback process.
      * @throws IOException       If an IO error occurs while making the HTTP request.
      */
-    public void callback(final SubscriptionEventMessage subscriptionEventMessage, final String callbackUrl) throws CallbackException, IOException, CouldNotFetchAccessTokenException {
+    public void callback(
+            final SubscriptionEventMessage subscriptionEventMessage,
+            final String callbackUrl,
+            final FutureCallback<Message<HttpResponse, Void>> responseHandler
+    ) throws IOException, CouldNotFetchAccessTokenException {
         // encodes the payload into UTF-8
         var payload = objectMapper.writeValueAsBytes(subscriptionEventMessage.getEvent());
 
@@ -123,38 +125,7 @@ public class RestClient {
                 .setEntity(new BasicAsyncEntityProducer(payload, ContentType.APPLICATION_JSON))
                 .build();
 
-        executeRequest(callbackUrl, request);
-    }
-
-    /**
-     * Executes the HTTP request and validates the response status code.
-     *
-     * @param callbackUrl The callbackUrl to which the request is made.
-     * @param request     The HTTP request to be executed.
-     * @throws IOException       If an IO error occurs during the HTTP request.
-     * @throws CallbackException If the response status code is not acceptable.
-     */
-    private void executeRequest(final String callbackUrl, final AsyncRequestProducer request) throws IOException, CallbackException {
-        var future = httpClient.execute(request, new BasicResponseConsumer<Void>(new DiscardingEntityConsumer<>()), null);
-        HttpResponse response;
-        try {
-            response = future.get().getHead();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Delivery request to '" + callbackUrl + "' was interrupted", e);
-        } catch (ExecutionException e) {
-            final var cause = e.getCause();
-            if (cause instanceof IOException ioException) {
-                throw ioException;
-            }
-            throw new IOException("Delivery request to '" + callbackUrl + "' failed", cause);
-        }
-
-        final var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
-        final var statusCode = response.getCode();
-        if (!successfulStatusCodes.contains(statusCode)) {
-            throw new CallbackException("Error while delivering event to callback '" + callbackUrl + "': " + response.getReasonPhrase(), statusCode);
-        }
+        httpClient.execute(request, new BasicResponseConsumer<>(new DiscardingEntityConsumer<>()), responseHandler);
     }
 
     /**

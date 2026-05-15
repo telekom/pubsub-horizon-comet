@@ -12,6 +12,7 @@ import de.telekom.eni.pandora.horizon.metrics.MetricNames;
 import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
+import de.telekom.eni.pandora.horizon.tracing.DebugSpanWrapper;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
@@ -25,11 +26,15 @@ import de.telekom.horizon.comet.model.DeliveryResult;
 import de.telekom.horizon.comet.model.DeliveryTaskRecord;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.hc.core5.concurrent.FutureCallback;
+import org.apache.hc.core5.http.HttpResponse;
+import org.apache.hc.core5.http.Message;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 
 import java.io.IOException;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 
 import static de.telekom.eni.pandora.horizon.metrics.HorizonMetricsConstants.*;
 
@@ -110,10 +115,6 @@ public class DeliveryTask implements Runnable {
      */
     @Override
     public void run() {
-        var status = Status.FAILED; // Failed if event not deliverable or internal error
-        var shouldRedeliver = false;
-        Exception exception = null;
-
         prepareDeliverySpan();
 
         try (var ignored = tracer.withSpanInScope(deliverySpan)) {
@@ -126,56 +127,48 @@ public class DeliveryTask implements Runnable {
             }
 
             if (isCircuitBreakerOpenOrChecking(subscriptionEventMessage.getSubscriptionId())) {
-                status = Status.WAITING;
-
                 log.debug("Circuit breaker is open for subscriptionId {}, skipping delivery for event with id {}", subscriptionEventMessage.getSubscriptionId(), subscriptionEventMessage.getUuid());
                 deliverySpan.annotate("Circuit Breaker open! Delivery skipped");
                 deliverySpan.tag("result", "skipped due to open circuit breaker");
                 deliverySpan.tag("reason", "circuit_breaker_open");
 
-                return; // jumps into finally block
+                handleDeliveryResult(Status.WAITING, false, null);
+                return;
             }
 
             executeCallback();
 
-            status = Status.DELIVERED;
-
-            processMetrics();
-        } catch (CallbackException callbackException) { // -> Could send request, but status code != accepted
-            shouldRedeliver = handleCallbackException(callbackException);
         } catch (CallbackUrlNotFoundException callbackUrlNotFoundException) {
-            exception = callbackUrlNotFoundException;
             log.error("No callback url found for EventMessage with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(callbackUrlNotFoundException));
             deliverySpan.error(callbackUrlNotFoundException);
+            writeInternalExceptionMetricTag(callbackUrlNotFoundException);
+            handleDeliveryResult(Status.FAILED, false, callbackUrlNotFoundException);
         } catch (JsonProcessingException jsonProcessingException) {
-            exception = jsonProcessingException;
             log.error("Could not process json for event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(jsonProcessingException));
             deliverySpan.error(jsonProcessingException);
+            writeInternalExceptionMetricTag(jsonProcessingException);
+            handleDeliveryResult(Status.FAILED, false, jsonProcessingException);
         } catch (IOException ioException) {
-            exception = ioException;
-            shouldRedeliver = true; // Maybe no firewall clearance, we still want to redeliver
-            log.error("Error while sending http request to consumer for event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(ioException));
+            log.error("Error while preparing http request for event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(ioException));
             deliverySpan.error(ioException);
+            writeInternalExceptionMetricTag(ioException);
+            // Maybe no firewall clearance, we still want to redeliver
+            handleDeliveryResult(Status.FAILED, true, ioException);
         } catch (HazelcastInstanceNotActiveException hazelcastInstanceNotActiveException) {
-            exception = hazelcastInstanceNotActiveException;
             log.error("Hazelcast was shutdown, wherefore the circuit-breaker could not be checked and we could not deliver event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(hazelcastInstanceNotActiveException));
             deliverySpan.error(hazelcastInstanceNotActiveException);
+            writeInternalExceptionMetricTag(hazelcastInstanceNotActiveException);
+            handleDeliveryResult(Status.FAILED, false, hazelcastInstanceNotActiveException);
         } catch (CouldNotFetchAccessTokenException couldNotFetchAccessTokenException) {
-            exception = couldNotFetchAccessTokenException;
             // This is a critical error, because we cannot deliver the event without an access token
             log.debug("CRITICAL: could not fetch access token for event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(couldNotFetchAccessTokenException));
+            writeInternalExceptionMetricTag(couldNotFetchAccessTokenException);
+            handleDeliveryResult(Status.FAILED, false, couldNotFetchAccessTokenException);
         } catch (Exception unknownException) {
-            exception = unknownException;
             log.error("Unknown exception occurred while processing event with id {}: {}", subscriptionEventMessage.getUuid(), buildCauseDescription(unknownException));
             deliverySpan.error(unknownException);
-        } finally {
-            if (exception != null) {
-                writeInternalExceptionMetricTag(exception);
-            }
-
-            DeliveryResult deliveryResult = new DeliveryResult(subscriptionEventMessage, status, shouldRedeliver, exception, deliverySpan, messageSource);
-            deliveryResultListener.handleDeliveryResult(deliveryResult);
-            log.debug("Finished working on delivering message with id {}", subscriptionEventMessage.getUuid());
+            writeInternalExceptionMetricTag(unknownException);
+            handleDeliveryResult(Status.FAILED, false, unknownException);
         }
     }
 
@@ -216,48 +209,13 @@ public class DeliveryTask implements Runnable {
     }
 
     /**
-     * Handles a callback exception by writing information about the exception into the current tracing span.
-     * This method sets tags in the current span related to the HTTP code, exception cause, and redelivery status.
-     *
-     * @param callbackException The CallbackException to be handled.
-     * @return True if the event should be redelivered after the callback exception; otherwise, false.
-     */
-    private boolean handleCallbackException(CallbackException callbackException) {
-        var httpCode = callbackException.getStatusCode();
-        writeHttpCodeMetricTags(httpCode);
-
-        var retryableStatusCodesOptional = callbackUrlCache
-                .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
-                .map(DeliveryTargetInformation::getRetryableStatusCodes);
-
-        var statusCodesToCheck = retryableStatusCodesOptional.orElse(cometConfig.getRedeliveryStatusCodes());
-
-        boolean shouldRedeliver;
-        if (retryableStatusCodesOptional.isPresent()) {
-            shouldRedeliver = statusCodesToCheck.contains(httpCode);
-        } else {
-            shouldRedeliver = cometConfig.getRedeliveryStatusCodes().contains(httpCode);
-        }
-
-        var exceptionCause = callbackException.getCause();
-        writeCallbackExceptionInTrace(exceptionCause, httpCode, shouldRedeliver);
-
-        log.info("Response was not accepted for event with id {}: {}. Should redeliver: {}", subscriptionEventMessage.getUuid(),
-                buildCauseDescription(exceptionCause, httpCode), shouldRedeliver);
-        deliverySpan.error(callbackException);
-
-        return shouldRedeliver;
-    }
-
-    /**
      * Executes the callback request for the current event message.
      * This method sets tags in the current span related to the callbackUrl.
      *
-     * @throws CallbackException            if the callback request fails
      * @throws CallbackUrlNotFoundException if no callback URL is found for the current event message
      * @throws IOException                  if an I/O error occurs while sending the callback request
      */
-    private void executeCallback() throws CallbackException, CallbackUrlNotFoundException, IOException, CouldNotFetchAccessTokenException {
+    private void executeCallback() throws CallbackUrlNotFoundException, IOException, CouldNotFetchAccessTokenException {
         deliverySpan.annotate("make callback request");
 
         var callbackSpan = tracer.startDebugSpan("callback");
@@ -274,9 +232,72 @@ public class DeliveryTask implements Runnable {
             }
 
             log.info("Executing callback for EventMessage with id '{}' at '{}'", subscriptionEventMessage.getUuid(), callbackUrlOrEmptyStr);
-            restClient.callback(subscriptionEventMessage, callbackUrlOrEmptyStr);
+            restClient.callback(subscriptionEventMessage, callbackUrlOrEmptyStr, new ResponseHandler(callbackSpan));
         } finally {
             callbackSpan.finish();
+        }
+    }
+
+    public class ResponseHandler implements FutureCallback<Message<HttpResponse, Void>> {
+        private final DebugSpanWrapper callbackSpan;
+
+        private ResponseHandler(DebugSpanWrapper callbackSpan) {
+            this.callbackSpan = callbackSpan;
+        }
+
+        @Override
+        public void completed(Message<HttpResponse, Void> response) {
+            final var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
+            final var statusCode = response.getHead().getCode();
+
+            final boolean shouldRedeliver;
+            final Status status;
+            if (!successfulStatusCodes.contains(statusCode)) {
+                status = Status.FAILED;
+                writeHttpCodeMetricTags(statusCode);
+
+                shouldRedeliver = callbackUrlCache
+                        .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
+                        .map(DeliveryTargetInformation::getRetryableStatusCodes)
+                        .orElse(cometConfig.getRedeliveryStatusCodes())
+                        .contains(statusCode);
+                writeCallbackExceptionInTrace(null, statusCode, shouldRedeliver);
+                log.info("Response was not accepted for event with id {}: {}. Should redeliver: {}", subscriptionEventMessage.getUuid(),
+                        buildCauseDescription(null, statusCode), shouldRedeliver);
+                deliverySpan.error(new CallbackException("Error while delivering event to callback '" +
+                        callbackUrlOrEmptyStr +
+                        "': " +
+                        response.getHead().getReasonPhrase(), statusCode)
+                );
+            } else {
+                shouldRedeliver = false;
+                status = Status.DELIVERED;
+                processMetrics();
+            }
+
+            callbackSpan.finish();
+            handleDeliveryResult(status, shouldRedeliver, null);
+        }
+
+        @Override
+        public void failed(Exception ex) {
+            handleException(ex);
+        }
+
+        @Override
+        public void cancelled() {
+            handleException(new CancellationException("Delivery request to '" + callbackUrlOrEmptyStr + "' was cancelled"));
+        }
+
+        private void handleException(final Exception exception) {
+            log.error("Error while sending http request to consumer for event with id {}: {}",
+                    subscriptionEventMessage.getUuid(),
+                    "cause " + exception + " " + exception.getMessage() + " with Type " + exception.getClass().getName()
+            );
+            deliverySpan.error(exception);
+            writeInternalExceptionMetricTag(exception);
+
+            handleDeliveryResult(Status.FAILED, true, exception);
         }
     }
 
@@ -358,5 +379,11 @@ public class DeliveryTask implements Runnable {
             causeDescription = String.format("cause %s %s with Type %s", exceptionCause, exceptionCause.getMessage(), exceptionCause.getClass().getName());
         }
         return causeDescription;
+    }
+
+    private void handleDeliveryResult(final Status status, final boolean shouldRedeliver, final Exception exception) {
+        DeliveryResult deliveryResult = new DeliveryResult(subscriptionEventMessage, status, shouldRedeliver, exception, deliverySpan, messageSource);
+        deliveryResultListener.handleDeliveryResult(deliveryResult);
+        log.debug("Finished working on delivering message with id {}", subscriptionEventMessage.getUuid());
     }
 }
