@@ -77,7 +77,7 @@ public class HttpClientConfig {
     @Bean
     public IOReactorConfig ioReactorConfig() {
         return IOReactorConfig.custom()
-                .setIoThreadCount(8)
+                .setIoThreadCount(4)
                 .build();
     }
 
