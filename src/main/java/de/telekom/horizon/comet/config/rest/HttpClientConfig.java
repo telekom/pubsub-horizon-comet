@@ -10,9 +10,6 @@ import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.config.TlsConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
-import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
@@ -44,19 +41,6 @@ public class HttpClientConfig {
     }
 
     /**
-     * Creates and configures the {@code PoolingHttpClientConnectionManager} bean used for managing HTTP connections.
-     *
-     * @return The configured {@code PoolingHttpClientConnectionManager} bean.
-     */
-    //@Bean
-    public PoolingHttpClientConnectionManager poolingHttpClientConnectionManager() {
-        var connectionManager = new PoolingHttpClientConnectionManager();
-        connectionManager.setMaxTotal(cometConfig.getMaxConnections());
-        connectionManager.setDefaultMaxPerRoute(cometConfig.getMaxConnections());
-        return connectionManager;
-    }
-
-    /**
      * Creates and configures the {@code RequestConfig} bean for request timeout settings.
      *
      * @return The configured {@code RequestConfig} bean.
@@ -68,6 +52,11 @@ public class HttpClientConfig {
                 .build();
     }
 
+    /**
+     * Creates and configures the {@code PoolingAsyncClientConnectionManager} bean used for managing HTTP connections.
+     *
+     * @return The configured {@code PoolingAsyncClientConnectionManager} bean.
+     */
     @Bean
     public PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager() {
         return PoolingAsyncClientConnectionManagerBuilder.create()
@@ -88,6 +77,7 @@ public class HttpClientConfig {
     @Bean
     public IOReactorConfig ioReactorConfig() {
         return IOReactorConfig.custom()
+                .setIoThreadCount(8)
                 .build();
     }
 
@@ -97,10 +87,6 @@ public class HttpClientConfig {
             RequestConfig requestConfig,
             IOReactorConfig ioReactorConfig) {
         final var client = HttpAsyncClients.custom()
-                /*.setH2Config(H2Config
-                        .custom()
-                        .setInitialWindowSize(256*1024) // 256KiB window size
-                        .build())*/
                 .setConnectionManager(poolingAsyncClientConnectionManager)
                 .setIOReactorConfig(ioReactorConfig)
                 .setDefaultRequestConfig(requestConfig)
@@ -114,23 +100,5 @@ public class HttpClientConfig {
         client.start();
 
         return client;
-    }
-
-    /**
-     * Creates and configures the {@code CloseableHttpClient} bean using the provided connection manager and request config.
-     *
-     * @param poolingHttpClientConnectionManager The PoolingHttpClientConnectionManager bean.
-     * @param requestConfig                      The RequestConfig bean.
-     * @return The configured CloseableHttpClient bean.
-     */
-    //@Bean
-    public CloseableHttpClient httpClient(PoolingHttpClientConnectionManager poolingHttpClientConnectionManager, RequestConfig requestConfig) {
-        return HttpClientBuilder
-                .create()
-                .setConnectionManager(poolingHttpClientConnectionManager)
-                .setDefaultRequestConfig(requestConfig)
-                .disableCookieManagement()
-                .disableAutomaticRetries()
-                .build();
     }
 }
