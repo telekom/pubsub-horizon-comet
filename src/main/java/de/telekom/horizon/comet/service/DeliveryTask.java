@@ -31,6 +31,7 @@ import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.Message;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -73,6 +74,8 @@ public class DeliveryTask implements Runnable {
 
     private final DeliveryResultListener deliveryResultListener;
 
+    private final ThreadPoolTaskExecutor responseHandlerExecutor;
+
     private Span deliverySpan;
 
     private final HorizonComponentId messageSource;
@@ -83,7 +86,7 @@ public class DeliveryTask implements Runnable {
      *
      * @param deliveryTaskRecord The DeliveryTaskRecord containing information about the current event message.
      */
-    public DeliveryTask(DeliveryTaskRecord deliveryTaskRecord) {
+    public DeliveryTask(DeliveryTaskRecord deliveryTaskRecord, ThreadPoolTaskExecutor responseHandlerExecutor) {
         this.subscriptionEventMessage = deliveryTaskRecord.subscriptionEventMessage();
         this.callbackUrlOrEmptyStr = deliveryTaskRecord.callbackUrl();
         this.backoffInterval = deliveryTaskRecord.backoffInterval();
@@ -101,6 +104,7 @@ public class DeliveryTask implements Runnable {
         this.deliverySpan = deliveryTaskRecord.deliverySpan();
         this.messageSource = deliveryTaskRecord.messageSource();
         this.context = deliveryTaskRecord.context();
+        this.responseHandlerExecutor = responseHandlerExecutor;
     }
 
     /**
@@ -247,46 +251,48 @@ public class DeliveryTask implements Runnable {
 
         @Override
         public void completed(Message<HttpResponse, Void> response) {
-            final var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
-            final var statusCode = response.getHead().getCode();
+            responseHandlerExecutor.execute(() -> {
+                final var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
+                final var statusCode = response.getHead().getCode();
 
-            final boolean shouldRedeliver;
-            final Status status;
-            if (!successfulStatusCodes.contains(statusCode)) {
-                status = Status.FAILED;
-                writeHttpCodeMetricTags(statusCode);
+                final boolean shouldRedeliver;
+                final Status status;
+                if (!successfulStatusCodes.contains(statusCode)) {
+                    status = Status.FAILED;
+                    writeHttpCodeMetricTags(statusCode);
 
-                shouldRedeliver = callbackUrlCache
-                        .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
-                        .map(DeliveryTargetInformation::getRetryableStatusCodes)
-                        .orElse(cometConfig.getRedeliveryStatusCodes())
-                        .contains(statusCode);
-                writeCallbackExceptionInTrace(null, statusCode, shouldRedeliver);
-                log.info("Response was not accepted for event with id {}: {}. Should redeliver: {}", subscriptionEventMessage.getUuid(),
-                        buildCauseDescription(null, statusCode), shouldRedeliver);
-                deliverySpan.error(new CallbackException("Error while delivering event to callback '" +
-                        callbackUrlOrEmptyStr +
-                        "': " +
-                        response.getHead().getReasonPhrase(), statusCode)
-                );
-            } else {
-                shouldRedeliver = false;
-                status = Status.DELIVERED;
-                processMetrics();
-            }
+                    shouldRedeliver = callbackUrlCache
+                            .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
+                            .map(DeliveryTargetInformation::getRetryableStatusCodes)
+                            .orElse(cometConfig.getRedeliveryStatusCodes())
+                            .contains(statusCode);
+                    writeCallbackExceptionInTrace(null, statusCode, shouldRedeliver);
+                    log.info("Response was not accepted for event with id {}: {}. Should redeliver: {}", subscriptionEventMessage.getUuid(),
+                            buildCauseDescription(null, statusCode), shouldRedeliver);
+                    deliverySpan.error(new CallbackException("Error while delivering event to callback '" +
+                            callbackUrlOrEmptyStr +
+                            "': " +
+                            response.getHead().getReasonPhrase(), statusCode)
+                    );
+                } else {
+                    shouldRedeliver = false;
+                    status = Status.DELIVERED;
+                    processMetrics();
+                }
 
-            callbackSpan.finish();
-            handleDeliveryResult(status, shouldRedeliver, null);
+                callbackSpan.finish();
+                handleDeliveryResult(status, shouldRedeliver, null);
+            });
         }
 
         @Override
         public void failed(Exception ex) {
-            handleException(ex);
+            responseHandlerExecutor.execute(() -> handleException(ex));
         }
 
         @Override
         public void cancelled() {
-            handleException(new CancellationException("Delivery request to '" + callbackUrlOrEmptyStr + "' was cancelled"));
+           responseHandlerExecutor.execute(() -> handleException(new CancellationException("Delivery request to '" + callbackUrlOrEmptyStr + "' was cancelled")));
         }
 
         private void handleException(final Exception exception) {

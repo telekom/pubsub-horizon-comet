@@ -12,6 +12,7 @@ import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.config.CometMetrics;
 import de.telekom.horizon.comet.model.DeliveryTaskRecord;
 import lombok.Getter;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
 
 /**
@@ -67,7 +68,7 @@ public class DeliveryTaskFactory {
      * @param deliveryTaskRecord The DeliveryTaskRecord containing information for creating the new task.
      * @return A new instance of DeliveryTask.
      */
-    public DeliveryTask createNew(DeliveryTaskRecord deliveryTaskRecord) {
-        return new DeliveryTask(deliveryTaskRecord);
+    public DeliveryTask createNew(final DeliveryTaskRecord deliveryTaskRecord, final ThreadPoolTaskExecutor executor) {
+        return new DeliveryTask(deliveryTaskRecord, executor);
     }
 }
