@@ -77,7 +77,6 @@ public class HttpClientConfig {
     @Bean
     public IOReactorConfig ioReactorConfig() {
         return IOReactorConfig.custom()
-                .setIoThreadCount(2)
                 .build();
     }
 
@@ -90,7 +89,6 @@ public class HttpClientConfig {
                 .setConnectionManager(poolingAsyncClientConnectionManager)
                 .setIOReactorConfig(ioReactorConfig)
                 .setDefaultRequestConfig(requestConfig)
-                //.setConnectionReuseStrategy(DefaultClientConnectionReuseStrategy.INSTANCE)
                 .evictExpiredConnections()
                 .evictIdleConnections(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
                 //.setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
