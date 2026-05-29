@@ -5,6 +5,7 @@ FROM amazoncorretto:21-alpine
 
 WORKDIR app
 
+RUN apk add --no-cache --update gcompat --repository=https://dl-cdn.alpinelinux.org/alpine/v3.18/main/
 COPY build/libs/comet.jar app.jar
 
 EXPOSE 8080
