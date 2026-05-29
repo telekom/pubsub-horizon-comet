@@ -1,9 +1,7 @@
 # Copyright 2024 Deutsche Telekom IT GmbH
 #
 # SPDX-License-Identifier: Apache-2.0
-
-ARG DOCKER_BASE_IMAGE=amazoncorretto:21-alpine
-FROM ${DOCKER_BASE_IMAGE}
+FROM amazoncorretto:21-alpine
 
 WORKDIR app
 
