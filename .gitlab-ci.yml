@@ -8,6 +8,6 @@ include:
   ref: develop
 
 variables:
-  JAVA_BUILD_IMAGE: mtr.devops.telekom.de/community/jdk:21
+  JAVA_BUILD_IMAGE: dockerhub.devops.telekom.de/amazoncorretto:21-alpine
   DS_JAVA_VERSION: 21
   TARGET_IMAGE_SUBGROUP: horizon
