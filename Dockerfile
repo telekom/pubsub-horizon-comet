@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-ARG DOCKER_BASE_IMAGE=azul/zulu-openjdk-alpine:21-jre
+ARG DOCKER_BASE_IMAGE=azul/zulu-openjdk-alpine:21-jdk
 FROM ${DOCKER_BASE_IMAGE}
 
 WORKDIR app
