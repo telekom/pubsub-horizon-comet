@@ -13,6 +13,7 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.concurrent.CompletionStage;
 
 /**
  * The {@code CallbackUrlCache} class provides a service for managing callback properties associated with
@@ -54,5 +55,22 @@ public class CallbackUrlCache {
                         subscriptionResource.getSpec().getSubscription().isCircuitBreakerOptOut(),
                         subscriptionResource.getSpec().getSubscription().getRetryableStatusCodes()));
 
+    }
+
+    public CompletionStage<DeliveryTargetInformation> getDeliveryTargetInformationAsync(String subscriptionId) {
+
+        // TODO: update parent
+        CompletionStage<SubscriptionResource> subscriptionFuture = subscriptionCache.getByKeyAsync(subscriptionId);
+
+        return subscriptionFuture
+                .thenApply(subscriptionResource -> {
+                    var subscription = subscriptionResource.getSpec().getSubscription();
+                    return new DeliveryTargetInformation(
+                            subscription.getCallback(),
+                            subscription.getDeliveryType(),
+                            subscription.isCircuitBreakerOptOut(),
+                            subscription.getRetryableStatusCodes()
+                    );
+                });
     }
 }
