@@ -28,6 +28,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -146,12 +148,18 @@ public class DeliveryService implements DeliveryResultListener {
             status = Status.DELIVERING;
             var isRedelivering = tryToRedeliver(deliveryResult);
             if (!isRedelivering) {
-                if (isOptedOutFromCircuitBreaker(subscriptionEventMessage.getSubscriptionId())) {
-                    status = Status.FAILED;
-                } else {
-                    status = Status.WAITING;
-                    openCircuitBreaker(subscriptionEventMessage);
-                }
+                isOptedOutFromCircuitBreaker(subscriptionEventMessage.getSubscriptionId()).thenAccept(isOptedOut -> {
+                    if (!(deliveryResult.exception() instanceof CouldNotFetchAccessTokenException)) {
+                        var deliveryState = Status.FAILED;
+                        if (!isOptedOut) {
+                            deliveryState = Status.WAITING;
+                            openCircuitBreaker(subscriptionEventMessage);
+                        }
+                        retryCounts.remove(subscriptionEventMessage.getUuid());
+                        updateDeliveryState(deliveryState, subscriptionEventMessage, deliveryResult);
+                    }
+                });
+                return;
             }
         }
 
@@ -175,28 +183,24 @@ public class DeliveryService implements DeliveryResultListener {
     private void updateDeliveryState(Status status, SubscriptionEventMessage subscriptionEventMessage, DeliveryResult deliveryResult) {
         try (var ignored = tracer.withSpanInScope(deliveryResult.deliverySpan())) {
             var afterSendFuture = stateService.updateState(status, subscriptionEventMessage, deliveryResult.exception());
-            if (status.equals(Status.DELIVERED) || status.equals(Status.FAILED)) {
-                var deliveryTypeOfSubscription = callbackUrlCache
-                        .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
-                        .map(DeliveryTargetInformation::getDeliveryType);
 
-                if (status == Status.FAILED
-                        && deliveryTypeOfSubscription.isPresent()
-                        && (deliveryTypeOfSubscription.get().equals("sse") || deliveryTypeOfSubscription.get().equals("server_sent_event"))
-                        && deliveryResult.exception() instanceof CallbackUrlNotFoundException) {
-
-                    log.warn("Event with id {} and deliveryType {} and error {} was skipped by deduplication",
-                            subscriptionEventMessage.getUuid(),
-                            deliveryTypeOfSubscription.orElse("unknown"),
-                            deliveryResult.exception().getClass().getSimpleName());
-
-                    return;
-                }
-
+            if (status.equals(Status.DELIVERING)) {
                 afterSendFuture.thenAccept(result -> trackEventForDeduplication(subscriptionEventMessage));
+                deliveryResult.deliverySpan().finish();
+            } else if (status.equals(Status.FAILED) && deliveryResult.exception() instanceof CallbackUrlNotFoundException) {
+                callbackUrlCache.getDeliveryTargetInformationAsync(subscriptionEventMessage.getSubscriptionId())
+                        .thenApply(DeliveryTargetInformation::getDeliveryType)
+                        .exceptionally(ex -> "unknown")
+                        .thenAccept(type -> {
+                            if (type.equals("sse") || type.equals("server_sent_event")) {
+                                log.warn("Event with id {} and deliveryType {} and error {} was skipped by deduplication",
+                                        subscriptionEventMessage.getUuid(), type, deliveryResult.exception().getClass().getSimpleName()
+                                );
+                            }
+                            deliveryResult.deliverySpan().finish();
+                        });
+
             }
-        } finally {
-            deliveryResult.deliverySpan().finish();
         }
     }
 
@@ -206,10 +210,10 @@ public class DeliveryService implements DeliveryResultListener {
      * @param subscriptionId The ID of the subscription to check.
      * @return True if the subscription has opted out from the circuit breaker; otherwise, false.
      */
-    private boolean isOptedOutFromCircuitBreaker(String subscriptionId) {
-        return callbackUrlCache.getDeliveryTargetInformation(subscriptionId)
-                .map(DeliveryTargetInformation::isOptOutCircuitBreaker)
-                .orElse(false);
+    private CompletionStage<Boolean> isOptedOutFromCircuitBreaker(String subscriptionId) {
+        return callbackUrlCache.getDeliveryTargetInformationAsync(subscriptionId)
+                .thenApply(DeliveryTargetInformation::isOptOutCircuitBreaker)
+                .exceptionally(ex -> false);
     }
 
     /**
@@ -248,7 +252,8 @@ public class DeliveryService implements DeliveryResultListener {
      * @return The callbackUrl obtained from the cache or additional fields.
      */
     private String getCallbackUrlOrEmptyStr(SubscriptionEventMessage subscriptionEventMessage) {
-        var callbackUrlCacheEntry = callbackUrlCache.getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId());
+        // TODO: rewrite async, including the parent calls as callbacks
+        var callbackUrlCacheEntry = callbackUrlCache.getDeliveryTargetInformationAsync(subscriptionEventMessage.getSubscriptionId());
         return callbackUrlCacheEntry.map(deliveryTargetInformation ->
                 Optional.ofNullable(deliveryTargetInformation.getUrl()).orElse("")).orElse("");
     }
