@@ -63,6 +63,7 @@ public class CallbackUrlCache {
         CompletionStage<SubscriptionResource> subscriptionFuture = subscriptionCache.getByKeyAsync(subscriptionId);
 
         return subscriptionFuture
+                // TODO: handle null value
                 .thenApply(subscriptionResource -> {
                     var subscription = subscriptionResource.getSpec().getSubscription();
                     return new DeliveryTargetInformation(
