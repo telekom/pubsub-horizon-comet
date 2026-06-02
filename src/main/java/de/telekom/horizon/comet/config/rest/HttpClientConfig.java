@@ -8,16 +8,23 @@ import de.telekom.horizon.comet.config.CometConfig;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.config.TlsConfig;
+import org.apache.hc.client5.http.impl.DefaultHttpRequestRetryStrategy;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
 import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
+import org.apache.hc.core5.http.ConnectionClosedException;
+import org.apache.hc.core5.http.HttpRequest;
+import org.apache.hc.core5.http.protocol.HttpContext;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.reactor.IOReactorConfig;
 import org.apache.hc.core5.util.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
 
 
 /**
@@ -93,7 +100,20 @@ public class HttpClientConfig {
                 .evictIdleConnections(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
                 //.setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
                 .disableCookieManagement()
-                .disableAutomaticRetries()
+                .setRetryStrategy(new DefaultHttpRequestRetryStrategy(){
+
+                    final int MAX_RETRIES = 1;
+
+                    @Override
+                    public boolean retryRequest(HttpRequest request, IOException exception, int execCount, HttpContext context) {
+
+                        // An exception shall be considered retryable when a new connection is needed.
+                        var retryable = exception instanceof ConnectionClosedException || exception instanceof ClosedChannelException;
+
+                        return retryable && execCount <= MAX_RETRIES;
+                    }
+
+                })
                 .build();
         client.start();
 
