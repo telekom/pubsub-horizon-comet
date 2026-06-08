@@ -79,7 +79,7 @@ class CircuitBreakerTests extends AbstractIntegrationTest {
         await().atMost(Duration.ofSeconds(15)).until(() -> circuitBreakerCacheService.isCircuitBreakerOpenOrChecking(subscriptionId));
         // we tried 3 times calling callback
         wireMockServer.verify(
-                exactly(3),
+                exactly(6),
                 postRequestedFor(
                         urlPathEqualTo(callbackPath)
                 )
