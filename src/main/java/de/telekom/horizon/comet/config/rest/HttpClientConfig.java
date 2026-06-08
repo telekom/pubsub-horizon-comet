@@ -106,9 +106,8 @@ public class HttpClientConfig {
 
                     @Override
                     public boolean retryRequest(HttpRequest request, IOException exception, int execCount, HttpContext context) {
-
                         // An exception shall be considered retryable when a new connection is needed.
-                        var retryable = exception instanceof ConnectionClosedException || exception instanceof ClosedChannelException;
+                        var retryable = exception instanceof ConnectionClosedException;
 
                         return retryable && execCount <= MAX_RETRIES;
                     }
