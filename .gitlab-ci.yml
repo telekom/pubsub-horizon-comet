@@ -8,6 +8,6 @@ include:
   ref: chore/push-to-artifactory
 
 variables:
-  JAVA_BUILD_IMAGE: mtr.devops.telekom.de/community/jdk:21
+  JAVA_BUILD_IMAGE: artifactory.devops.telekom.de:8080/mcc-secured-containerimages-oci-local/community/jdk:21.0.11
   DS_JAVA_VERSION: 21
   TARGET_IMAGE_SUBGROUP: horizon
