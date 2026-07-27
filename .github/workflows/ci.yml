@@ -25,7 +25,7 @@ jobs:
     with:
       component: comet
       language: java
-      build-args: "DOCKER_BASE_IMAGE=artifactory.devops.telekom.de/tardis-oci-local/tardis/infra/build/pandora-java-21:1.0.0"
+      build-args: "DOCKER_BASE_IMAGE=amazoncorretto:21-al2"
     secrets:
       REGISTRY_USERNAME: ${{ secrets.ARTIFACTORY_O28M_PUSH_USER }}
       REGISTRY_PASSWORD: ${{ secrets.ARTIFACTORY_O28M_PUSH_TOKEN }}
