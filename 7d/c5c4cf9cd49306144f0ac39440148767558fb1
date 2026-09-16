@@ -1,0 +1,19 @@
+build.gradle
+  s_d97e5759dca997::t_e28bdb26f636bd 48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7dc5c4cf9cd49306144f0ac39440148767558fb1",
+  "prompts": {},
+  "sessions": {
+    "s_d97e5759dca997": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ada7bd56-9291-4d81-b0a7-c12920ccd8f3",
+        "model": "claude-opus-5"
+      },
+      "human_author": "christopher.braun@telekom.de <christopher.braun@telekom.de>"
+    }
+  }
+}
