@@ -84,6 +84,8 @@ management:
 horizon:
   cache:
     enabled: true
+    local-subscription-cache:
+      enabled: true
     kubernetesServiceDns: ${COMET_CACHE_SERVICE_DNS:horizon-quasar-discovery-headless.integration.svc.cluster.local}
     deDuplication:
       enabled: ${COMET_CACHE_DE_DUPLICATION_ENABLED:false}

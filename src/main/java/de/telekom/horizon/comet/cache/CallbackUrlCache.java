@@ -4,10 +4,11 @@
 
 package de.telekom.horizon.comet.cache;
 
-import de.telekom.eni.pandora.horizon.cache.service.JsonCacheService;
-import de.telekom.eni.pandora.horizon.exception.JsonCacheException;
+import de.telekom.eni.pandora.horizon.cache.service.SubscriptionCacheReader;
+import de.telekom.eni.pandora.horizon.exception.SubscriptionCacheReadException;
 import de.telekom.eni.pandora.horizon.kubernetes.resource.SubscriptionResource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
@@ -24,9 +25,10 @@ import java.util.Optional;
 @Scope(value = ConfigurableBeanFactory.SCOPE_SINGLETON)
 public class CallbackUrlCache {
 
-    private final JsonCacheService<SubscriptionResource> subscriptionCache;
+    private final SubscriptionCacheReader subscriptionCache;
 
-    public CallbackUrlCache(JsonCacheService<SubscriptionResource> subscriptionCache) {
+    public CallbackUrlCache(
+            @Qualifier("subscriptionCacheReader") SubscriptionCacheReader subscriptionCache) {
         this.subscriptionCache = subscriptionCache;
     }
 
@@ -42,9 +44,9 @@ public class CallbackUrlCache {
         Optional<SubscriptionResource> subscription = Optional.empty();
 
         try {
-            subscription = subscriptionCache.getByKey(subscriptionId);
-        } catch (JsonCacheException e) {
-            log.error("Error occurred while executing query on JsonCacheServe", e);
+            subscription = subscriptionCache.getById(subscriptionId);
+        } catch (SubscriptionCacheReadException exception) {
+            log.error("Error occurred while reading subscription from Subscription-Cache", exception);
 
         }
 
