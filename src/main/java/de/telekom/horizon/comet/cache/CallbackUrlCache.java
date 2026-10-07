@@ -5,6 +5,7 @@
 package de.telekom.horizon.comet.cache;
 
 import de.telekom.eni.pandora.horizon.cache.service.SubscriptionCacheReader;
+import de.telekom.eni.pandora.horizon.exception.JsonCacheException;
 import de.telekom.eni.pandora.horizon.exception.SubscriptionCacheReadException;
 import de.telekom.eni.pandora.horizon.kubernetes.resource.SubscriptionResource;
 import lombok.extern.slf4j.Slf4j;
@@ -37,17 +38,22 @@ public class CallbackUrlCache {
      *
      * @param subscriptionId The subscriptionId for which to retrieve callback properties.
      * @return The DeliveryTargetInformation object associated with the subscriptionId, or null if not found.
+     * @throws SubscriptionLookupException if the subscription cannot be read
      */
 
     public Optional<DeliveryTargetInformation> getDeliveryTargetInformation(String subscriptionId) {
 
-        Optional<SubscriptionResource> subscription = Optional.empty();
+        Optional<SubscriptionResource> subscription;
 
         try {
             subscription = subscriptionCache.getById(subscriptionId);
         } catch (SubscriptionCacheReadException exception) {
-            log.error("Error occurred while reading subscription from Subscription-Cache", exception);
-
+            // Handle JSON mapping errors of fallback (JsonCacheException) as before; log and return an empty list
+            if (exception.getCause() instanceof JsonCacheException) {
+                log.error("Error occurred while executing query on JsonCacheService for subscriptionId {}", subscriptionId, exception);
+                return Optional.empty();
+            }
+            throw new SubscriptionLookupException("Error occurred while reading subscription for  " + subscriptionId, exception);
         }
 
         return subscription.map(subscriptionResource -> new DeliveryTargetInformation
