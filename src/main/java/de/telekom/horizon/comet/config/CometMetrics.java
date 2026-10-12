@@ -56,7 +56,19 @@ public class CometMetrics {
                     .tag("clientId", messageSource.getClientId())
                     .minimumExpectedValue(Duration.ofMillis(10))
                     .maximumExpectedValue(Duration.ofHours(4))
-                    .publishPercentileHistogram()
+                    .serviceLevelObjectives(
+                            Duration.ofMillis(50),
+                            Duration.ofMillis(100),
+                            Duration.ofMillis(250),
+                            Duration.ofMillis(500),
+                            Duration.ofSeconds(1),
+                            Duration.ofMillis(2500),
+                            Duration.ofSeconds(5),
+                            Duration.ofSeconds(10),
+                            Duration.ofSeconds(30),
+                            Duration.ofMinutes(1),
+                            Duration.ofMinutes(5),
+                            Duration.ofMinutes(30))
                     .register(this.meterRegistry));
 
             long trustedEventStartTimeMillis = (Long) subscriptionEventMessage.getAdditionalFields().get(AdditionalFields.START_TIME_TRUSTED.getValue());
