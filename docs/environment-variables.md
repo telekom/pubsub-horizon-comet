@@ -45,15 +45,15 @@ Comet is configured using environment variables. The following environment varia
 | COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ENABLED | true | Enables the pod-local subscription cache |
 | COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_FALLBACK_MODE | hazelcast-with-mongo-fallback | Read fallback when the local cache cannot serve reads (`hazelcast-with-mongo-fallback` or `none`). With `none`, stale local entries are served indefinitely if necessary |
 | COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_SNAPSHOT_COLLECTION | subscriptions.subscriber.horizon.telekom.de.v1-snapshots | MongoDB collection with the snapshot entries |
-| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_STALE_LOCAL_CACHE_READ_GRACE_PERIOD | 120s | How long a stale local snapshot may serve reads before Hazelcast is used. Only applies to `FALLBACK_MODE=hazelcast-with-mongo-fallback` |
+| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_STALE_LOCAL_CACHE_READ_GRACE_PERIOD | 300s | How long a stale local snapshot may serve reads before Hazelcast is used. Only applies to `FALLBACK_MODE=hazelcast-with-mongo-fallback`. Profile `dev`: `120s` |
 | COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_REQUIRE_LOCAL_CACHE_AT_STARTUP | true | Whether startup waits for the first local snapshot. Only applies to `FALLBACK_MODE=hazelcast-with-mongo-fallback`; with `none`, startup always waits |
 | COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_INITIAL_SNAPSHOT_TIMEOUT | 15s | Maximum wait for the first local snapshot when startup waits for it; afterwards startup fails and the process terminates. `0s` waits indefinitely |
-| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_RECONCILE_INTERVAL | 60s | Interval for re-checking the active head (ZooKeeper or MongoDB); `0s` disables it |
-| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_MONGO_HEAD_POLL_JITTER | 10s | Maximum random offset of the first periodic head reconciliation |
-| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_MONGO_SNAPSHOT_SYNC_JITTER | 10s | Maximum random delay before loading a snapshot for prepared preloads and reconnects (ZooKeeper mode only) |
-| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_ENSEMBLE_TRACKER_ENABLED | true | Lets Curator follow ZooKeeper-published ensemble addresses. Can be `false` for local operation, because the published addresses are not reachable from the host |
-| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_CONNECT_STRING | (empty) | ZooKeeper connect string; required in ZooKeeper mode |
+| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_RECONCILE_INTERVAL | 60s | Interval for re-checking the ZooKeeper activated head; `0s` disables it |
+| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_HEAD_CHECK_JITTER | 10s | Maximum random offset of the first periodic activated-head check |
+| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_SNAPSHOT_SYNC_JITTER | 10s | Maximum random delay before loading a snapshot for prepared preloads and reconnects |
+| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_ENSEMBLE_TRACKER_ENABLED | true | Lets Curator follow ZooKeeper-published ensemble addresses. Can be `false` for local operation, because the published addresses are not reachable from the host. Profile `dev`: `false` |
+| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_CONNECT_STRING | (empty) | ZooKeeper connect string; required (Helm derives `horizon-zookeeper.<namespace>.svc.cluster.local:2181`). Profile `dev`: `127.0.0.1:2181,127.0.0.1:2182,127.0.0.1:2183` |
 | COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_PREPARED_PATH | /horizon/subscriptions/prepared | ZNode path of the prepared head |
-| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_ACTIVATE_PATH | /horizon/subscriptions/activated | ZNode path of the activated head |
+| COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_ACTIVATED_PATH | /horizon/subscriptions/activated | ZNode path of the activated head |
 | COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_CONNECTION_TIMEOUT | 5s | Curator connection timeout; also bounds each ZooKeeper head read |
 | COMET_CACHE_LOCAL_SUBSCRIPTION_CACHE_ZOO_KEEPER_SESSION_TIMEOUT | 30s | ZooKeeper session timeout |
