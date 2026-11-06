@@ -4,10 +4,12 @@
 
 package de.telekom.horizon.comet.cache;
 
-import de.telekom.eni.pandora.horizon.cache.service.JsonCacheService;
+import de.telekom.eni.pandora.horizon.cache.service.SubscriptionCacheReader;
 import de.telekom.eni.pandora.horizon.exception.JsonCacheException;
+import de.telekom.eni.pandora.horizon.exception.SubscriptionCacheReadException;
 import de.telekom.eni.pandora.horizon.kubernetes.resource.SubscriptionResource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
@@ -24,9 +26,10 @@ import java.util.Optional;
 @Scope(value = ConfigurableBeanFactory.SCOPE_SINGLETON)
 public class CallbackUrlCache {
 
-    private final JsonCacheService<SubscriptionResource> subscriptionCache;
+    private final SubscriptionCacheReader subscriptionCache;
 
-    public CallbackUrlCache(JsonCacheService<SubscriptionResource> subscriptionCache) {
+    public CallbackUrlCache(
+            @Qualifier("subscriptionCacheReader") SubscriptionCacheReader subscriptionCache) {
         this.subscriptionCache = subscriptionCache;
     }
 
@@ -35,17 +38,22 @@ public class CallbackUrlCache {
      *
      * @param subscriptionId The subscriptionId for which to retrieve callback properties.
      * @return The DeliveryTargetInformation object associated with the subscriptionId, or null if not found.
+     * @throws SubscriptionLookupException if the subscription cannot be read
      */
 
     public Optional<DeliveryTargetInformation> getDeliveryTargetInformation(String subscriptionId) {
 
-        Optional<SubscriptionResource> subscription = Optional.empty();
+        Optional<SubscriptionResource> subscription;
 
         try {
-            subscription = subscriptionCache.getByKey(subscriptionId);
-        } catch (JsonCacheException e) {
-            log.error("Error occurred while executing query on JsonCacheServe", e);
-
+            subscription = subscriptionCache.getById(subscriptionId);
+        } catch (SubscriptionCacheReadException exception) {
+            // Handle JSON mapping errors of fallback (JsonCacheException) as before; log and return an empty list
+            if (exception.getCause() instanceof JsonCacheException) {
+                log.error("Error occurred while executing query on JsonCacheService for subscriptionId {}", subscriptionId, exception);
+                return Optional.empty();
+            }
+            throw new SubscriptionLookupException("Error occurred while reading subscription for  " + subscriptionId, exception);
         }
 
         return subscription.map(subscriptionResource -> new DeliveryTargetInformation

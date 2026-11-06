@@ -4,9 +4,9 @@
 
 package de.telekom.horizon.comet.service;
 
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ExitCodeEvent;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.event.ContextClosedEvent;
@@ -47,9 +47,9 @@ public class CometService {
      * Starts the Kafka message listener container if it is not null.
      * This method is designed to initiate the consumption of Kafka messages.
      */
-    @PostConstruct
-    public void init() {
-        if (messageListenerContainer != null) {
+    @EventListener(ApplicationReadyEvent.class)
+    public void applicationReadyHandler() {
+        if (messageListenerContainer != null && !messageListenerContainer.isRunning()) {
             messageListenerContainer.start();
             log.info("ConcurrentMessageListenerContainer started.");
         }
