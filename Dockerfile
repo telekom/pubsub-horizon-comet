@@ -1,6 +1,7 @@
 # Copyright 2024 Deutsche Telekom IT GmbH
 #
 # SPDX-License-Identifier: Apache-2.0
+
 ARG DOCKER_BASE_IMAGE=azul/zulu-openjdk-alpine:21-jdk
 FROM ${DOCKER_BASE_IMAGE}
 
