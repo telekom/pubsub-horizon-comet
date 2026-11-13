@@ -262,8 +262,7 @@ public class DeliveryTask implements Runnable {
                     writeHttpCodeMetricTags(statusCode);
 
                     shouldRedeliver = callbackUrlCache
-                            // TODO: reimplement async
-                            .getDeliveryTargetInformationAsync(subscriptionEventMessage.getSubscriptionId())
+                            .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
                             .map(DeliveryTargetInformation::getRetryableStatusCodes)
                             .orElse(cometConfig.getRedeliveryStatusCodes())
                             .contains(statusCode);
