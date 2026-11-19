@@ -8,8 +8,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
 import de.telekom.horizon.comet.config.CometConfig;
-import de.telekom.horizon.comet.exception.CallbackException;
-import de.telekom.horizon.comet.service.DeliveryTask;
 import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
 import de.telekom.horizon.comet.test.utils.HazelcastTestInstance;
 import de.telekom.horizon.comet.test.utils.ObjectGenerator;
@@ -58,10 +56,6 @@ class RestClientTest extends AbstractIntegrationTest {
     @Mock
     Future<Message<HttpResponse,Void>> responseFuture;
     @Mock
-    Message<HttpResponse,Void> responseMessage;
-    @Mock
-    HttpResponse response;
-    @Mock
     RequestChannel requestChannel;
     @Mock
     ApplicationContext context;
@@ -69,7 +63,7 @@ class RestClientTest extends AbstractIntegrationTest {
     RestClient restClient;
 
     @BeforeEach
-    void initMock() throws InterruptedException, ExecutionException {
+    void initMock() throws InterruptedException {
         when(cometConfig.getHeaderPropagationBlacklist()).thenReturn(List.of("x-spacegate-token", "authorization", "content-length", "host", "accept.*", "x-forwarded.*"));
         when(closeableHttpClient
                 .execute(any(AsyncRequestProducer.class),

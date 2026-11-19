@@ -9,7 +9,6 @@ import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
 import de.telekom.horizon.comet.config.CometConfig;
-import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
