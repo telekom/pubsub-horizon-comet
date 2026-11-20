@@ -31,11 +31,11 @@ import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.Message;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.io.IOException;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.Executor;
 
 import static de.telekom.eni.pandora.horizon.metrics.HorizonMetricsConstants.*;
 
@@ -74,7 +74,7 @@ public class DeliveryTask implements Runnable {
 
     private final DeliveryResultListener deliveryResultListener;
 
-    private final ThreadPoolTaskExecutor responseHandlerExecutor;
+    private final Executor responseHandlerExecutor;
 
     private Span deliverySpan;
 
@@ -86,7 +86,7 @@ public class DeliveryTask implements Runnable {
      *
      * @param deliveryTaskRecord The DeliveryTaskRecord containing information about the current event message.
      */
-    public DeliveryTask(DeliveryTaskRecord deliveryTaskRecord, ThreadPoolTaskExecutor responseHandlerExecutor) {
+    public DeliveryTask(DeliveryTaskRecord deliveryTaskRecord) {
         this.subscriptionEventMessage = deliveryTaskRecord.subscriptionEventMessage();
         this.callbackUrlOrEmptyStr = deliveryTaskRecord.callbackUrl();
         this.backoffInterval = deliveryTaskRecord.backoffInterval();
@@ -104,7 +104,7 @@ public class DeliveryTask implements Runnable {
         this.deliverySpan = deliveryTaskRecord.deliverySpan();
         this.messageSource = deliveryTaskRecord.messageSource();
         this.context = deliveryTaskRecord.context();
-        this.responseHandlerExecutor = responseHandlerExecutor;
+        this.responseHandlerExecutor = deliveryTaskRecord.deliveryTaskFactory().getTaskExecutor();
     }
 
     /**
