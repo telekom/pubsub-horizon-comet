@@ -237,8 +237,6 @@ public class DeliveryTask implements Runnable {
 
             log.info("Executing callback for EventMessage with id '{}' at '{}'", subscriptionEventMessage.getUuid(), callbackUrlOrEmptyStr);
             restClient.callback(subscriptionEventMessage, callbackUrlOrEmptyStr, new ResponseHandler(callbackSpan));
-        } finally {
-            callbackSpan.finish();
         }
     }
 
@@ -252,6 +250,7 @@ public class DeliveryTask implements Runnable {
         @Override
         public void completed(Message<HttpResponse, Void> response) {
             responseHandlerExecutor.execute(() -> {
+                callbackSpan.finish();
                 final var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
                 final var statusCode = response.getHead().getCode();
 
@@ -280,7 +279,6 @@ public class DeliveryTask implements Runnable {
                     processMetrics();
                 }
 
-                callbackSpan.finish();
                 handleDeliveryResult(status, shouldRedeliver, null);
             });
         }
@@ -296,6 +294,7 @@ public class DeliveryTask implements Runnable {
         }
 
         private void handleException(final Exception exception) {
+            callbackSpan.finish();
             log.error("Error while sending http request to consumer for event with id {}: {}",
                     subscriptionEventMessage.getUuid(),
                     "cause " + exception + " " + exception.getMessage() + " with Type " + exception.getClass().getName()
