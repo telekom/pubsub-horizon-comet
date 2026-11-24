@@ -40,7 +40,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.verification.VerificationMode;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -473,5 +472,6 @@ class DeliveryTaskTest {
             invocation.<FutureCallback<Message<HttpResponse,Void>>>getArgument(2).completed(new Message<>(new BasicHttpResponse(successfulStatusCode)));
             return null;
         }).when(restClient).callback(any(), anyString(), any());
+        when(cometConfig.getSuccessfulStatusCodes()).thenReturn(List.of(successfulStatusCode));
     }
 }
