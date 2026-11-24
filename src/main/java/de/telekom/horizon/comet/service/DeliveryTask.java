@@ -220,6 +220,10 @@ public class DeliveryTask implements Runnable {
      * @throws IOException                  if an I/O error occurs while sending the callback request
      */
     private void executeCallback() throws CallbackUrlNotFoundException, IOException, CouldNotFetchAccessTokenException {
+        if (StringUtils.isBlank(callbackUrlOrEmptyStr)) {
+            throw new CallbackUrlNotFoundException(String.format("No callback url found for EventMessage with id %s in cache and additional fields", subscriptionEventMessage.getUuid()));
+        }
+
         deliverySpan.annotate("make callback request");
 
         var callbackSpan = tracer.startDebugSpan("callback");
@@ -230,10 +234,6 @@ public class DeliveryTask implements Runnable {
             tracer.addTagsToSpanFromSubscriptionEventMessage(callbackSpan, subscriptionEventMessage);
 
             callbackSpan.tag("callbackUrl", callbackUrlOrEmptyStr);
-
-            if (StringUtils.isBlank(callbackUrlOrEmptyStr)) {
-                throw new CallbackUrlNotFoundException(String.format("No callback url found for EventMessage with id %s in cache and additional fields", subscriptionEventMessage.getUuid()));
-            }
 
             log.info("Executing callback for EventMessage with id '{}' at '{}'", subscriptionEventMessage.getUuid(), callbackUrlOrEmptyStr);
             restClient.callback(subscriptionEventMessage, callbackUrlOrEmptyStr, new ResponseHandler(callbackSpan));
