@@ -18,6 +18,7 @@ import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.client.RestClient;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.config.CometMetrics;
+import de.telekom.horizon.comet.exception.CallbackUrlNotFoundException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import de.telekom.horizon.comet.model.DeliveryResult;
 import de.telekom.horizon.comet.model.DeliveryTaskRecord;
@@ -33,9 +34,13 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.verification.VerificationMode;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -217,20 +222,9 @@ class DeliveryTaskTest {
 
         @BeforeEach
         void setUpRestClient() throws IOException, CouldNotFetchAccessTokenException {
-            final var successfulStatusCode = 201;
             meterRegistry = new SimpleMeterRegistry();
-            reset(restClient);
-            doAnswer(invocation -> {
-                invocation.getArgument(0, Runnable.class).run();
-                return null;
-            }).when(executor).execute(any(Runnable.class));
-            doAnswer(invocation -> {
-                invocation.<FutureCallback<Message<HttpResponse,Void>>>getArgument(2).completed(new Message<>(new BasicHttpResponse(successfulStatusCode)));
-                return null;
-            }).when(restClient).callback(any(), anyString(), any());
-            when(cometConfig.getSuccessfulStatusCodes()).thenReturn(List.of(successfulStatusCode));
+            setupRestClientWithResponseCallback();
         }
-
 
         @Test
         @DisplayName("Execute callback, record metrics, and emit DELIVERED on initial delivery when CircuitBreaker is closed")
@@ -388,5 +382,96 @@ class DeliveryTaskTest {
                     HorizonComponentId.UNSET
             ));
         }
+    }
+
+    @Nested
+    @DisplayName("Blank Callback URL")
+    class BlankCallbackUrlTest {
+
+        @Mock
+        private DebugSpanWrapper callbackSpan;
+
+        private SimpleMeterRegistry meterRegistry;
+
+        @BeforeEach
+        void setUpMetrics() {
+            meterRegistry = new SimpleMeterRegistry();
+        }
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = {"   ", "\t\n"})
+        @DisplayName("Finish callback span, record exception metric, and emit non-retryable FAILED when callback URL is blank")
+        void shouldEmitFailedWithCallbackUrlNotFoundExceptionWhenCallbackUrlIsBlank(String blankCallbackUrl) {
+            // given
+            when(tracer.startSpan("delivery")).thenReturn(deliverySpan);
+            when(circuitBreakerCacheService.isCircuitBreakerOpenOrChecking(TEST_SUBSCRIPTION_ID)).thenReturn(false);
+            when(metricsHelper.buildTagsFromSubscriptionEventMessage(eventMessage)).thenReturn(Tags.empty());
+            when(metricsHelper.getRegistry()).thenReturn(meterRegistry);
+
+            var record = new DeliveryTaskRecord(
+                    eventMessage,
+                    blankCallbackUrl,
+                    0L,
+                    0,
+                    deliveryResultListener,
+                    deliveryTaskFactory,
+                    callbackUrlCache,
+                    null,
+                    HorizonComponentId.UNSET,
+                    null
+            );
+            DeliveryTask task = deliveryTaskFactory.createNew(record);
+
+            // when
+            task.run();
+
+            // then
+            verify(deliverySpan, never()).annotate("make callback request");
+            verify(tracer, never()).startDebugSpan("callback");
+            verify(tracer, never()).withDebugSpanInScope(callbackSpan);
+            verify(tracer, never()).addTagsToSpanFromEventMessage(callbackSpan, eventMessage);
+            verify(tracer, never()).addTagsToSpanFromSubscriptionEventMessage(callbackSpan, eventMessage);
+
+            verifyNoInteractions(restClient, cometMetrics, callbackUrlCache, callbackSpan);
+
+            var resultCaptor = ArgumentCaptor.forClass(DeliveryResult.class);
+            verify(deliveryResultListener).handleDeliveryResult(resultCaptor.capture());
+
+            DeliveryResult result = resultCaptor.getValue();
+            assertEquals(eventMessage, result.subscriptionEventMessage());
+            assertEquals(Status.FAILED, result.status());
+            assertFalse(result.shouldRedeliver());
+            assertEquals(deliverySpan, result.deliverySpan());
+            assertEquals(HorizonComponentId.UNSET, result.messageSource());
+
+            CallbackUrlNotFoundException exception = assertInstanceOf(CallbackUrlNotFoundException.class, result.exception());
+            assertEquals(
+                    String.format("No callback url found for EventMessage with id %s in cache and additional fields", eventMessage.getUuid()),
+                    exception.getMessage()
+            );
+
+            verify(deliverySpan).error(exception);
+            verify(deliverySpan, never()).finish();
+
+            assertEquals(1.0, meterRegistry.get(METRIC_INTERNAL_EXCEPTION_COUNT)
+                    .tag("exception_class", CallbackUrlNotFoundException.class.getName())
+                    .counter()
+                    .count());
+            assertNull(meterRegistry.find(METRIC_CALLBACK_HTTP_CODE_COUNT).counter());
+        }
+    }
+
+    private void setupRestClientWithResponseCallback() throws IOException, CouldNotFetchAccessTokenException {
+        final var successfulStatusCode = 201;
+        reset(restClient);
+        doAnswer(invocation -> {
+            invocation.getArgument(0, Runnable.class).run();
+            return null;
+        }).when(executor).execute(any(Runnable.class));
+        doAnswer(invocation -> {
+            invocation.<FutureCallback<Message<HttpResponse,Void>>>getArgument(2).completed(new Message<>(new BasicHttpResponse(successfulStatusCode)));
+            return null;
+        }).when(restClient).callback(any(), anyString(), any());
     }
 }
