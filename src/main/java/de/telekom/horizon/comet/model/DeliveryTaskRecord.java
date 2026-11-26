@@ -9,7 +9,7 @@ import brave.internal.Nullable;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
-import de.telekom.horizon.comet.service.DeliveryResultListener;
+import de.telekom.horizon.comet.service.DeliveryService;
 import de.telekom.horizon.comet.service.DeliveryTaskFactory;
 import org.springframework.context.ApplicationContext;
 
@@ -18,7 +18,7 @@ public record DeliveryTaskRecord (
         String callbackUrl,
         long backoffInterval,
         int retryCount,
-        DeliveryResultListener deliveryResultListener,
+        DeliveryService deliveryService,
         DeliveryTaskFactory deliveryTaskFactory,
         CallbackUrlCache callbackUrlCache,
         @Nullable Span deliverySpan,

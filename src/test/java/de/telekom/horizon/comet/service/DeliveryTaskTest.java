@@ -5,26 +5,28 @@
 package de.telekom.horizon.comet.service;
 
 import brave.Span;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
 import de.telekom.eni.pandora.horizon.metrics.HorizonMetricsHelper;
 import de.telekom.eni.pandora.horizon.metrics.MetricNames;
-import de.telekom.eni.pandora.horizon.model.event.Status;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.model.meta.HorizonComponentId;
 import de.telekom.eni.pandora.horizon.tracing.DebugSpanWrapper;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
+import de.telekom.horizon.comet.auth.OAuth2TokenCache;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.client.RestClient;
 import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.config.CometMetrics;
 import de.telekom.horizon.comet.exception.CallbackUrlNotFoundException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
-import de.telekom.horizon.comet.model.DeliveryResult;
 import de.telekom.horizon.comet.model.DeliveryTaskRecord;
 import de.telekom.horizon.comet.test.utils.ObjectGenerator;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.core5.concurrent.FutureCallback;
 import org.apache.hc.core5.http.HttpResponse;
 import org.apache.hc.core5.http.Message;
@@ -37,9 +39,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -80,7 +82,7 @@ class DeliveryTaskTest {
     @Mock
     private CallbackUrlCache callbackUrlCache;
     @Mock
-    private DeliveryResultListener deliveryResultListener;
+    private DeliveryService deliveryService;
     @Mock
     private Span deliverySpan;
     @Mock
@@ -117,7 +119,7 @@ class DeliveryTaskTest {
                 CALLBACK_URL,
                 0L,
                 0,
-                deliveryResultListener,
+                deliveryService,
                 deliveryTaskFactory,
                 callbackUrlCache,
                 null,
@@ -147,16 +149,7 @@ class DeliveryTaskTest {
 
         verifyNoInteractions(restClient, cometMetrics, metricsHelper, callbackUrlCache, executor);
 
-        var resultCaptor = ArgumentCaptor.forClass(DeliveryResult.class);
-        verify(deliveryResultListener).handleDeliveryResult(resultCaptor.capture());
-
-        DeliveryResult result = resultCaptor.getValue();
-        assertEquals(eventMessage, result.subscriptionEventMessage());
-        assertEquals(Status.WAITING, result.status());
-        assertFalse(result.shouldRedeliver());
-        assertNull(result.exception());
-        assertEquals(deliverySpan, result.deliverySpan());
-        assertEquals(HorizonComponentId.UNSET, result.messageSource());
+        verify(deliveryService).updateDeliveryStateToWaiting(deliverySpan, eventMessage);
     }
 
     @Test
@@ -172,7 +165,7 @@ class DeliveryTaskTest {
                 CALLBACK_URL,
                 backoffInterval,
                 retryCount,
-                deliveryResultListener,
+                deliveryService,
                 deliveryTaskFactory,
                 callbackUrlCache,
                 deliverySpan,
@@ -199,23 +192,12 @@ class DeliveryTaskTest {
         verify(deliverySpan, never()).finish();
 
         verifyNoInteractions(restClient, cometMetrics, metricsHelper, callbackUrlCache, executor);
-
-        verify(deliveryResultListener).handleDeliveryResult(new DeliveryResult(
-                eventMessage,
-                Status.WAITING,
-                false,
-                null,
-                deliverySpan,
-                HorizonComponentId.UNSET
-        ));
+        verify(deliveryService).updateDeliveryStateToWaiting(deliverySpan, eventMessage);
     }
 
     @Nested
     @DisplayName("CircuitBreaker is NOT OPEN")
     class CircuitBreakerNotOpenTest {
-
-        @Mock
-        private DebugSpanWrapper callbackSpan;
 
         private SimpleMeterRegistry meterRegistry;
 
@@ -231,7 +213,6 @@ class DeliveryTaskTest {
             // given
             when(tracer.startSpan("delivery")).thenReturn(deliverySpan);
             when(circuitBreakerCacheService.isCircuitBreakerOpenOrChecking(TEST_SUBSCRIPTION_ID)).thenReturn(false);
-            when(tracer.startDebugSpan("callback")).thenReturn(callbackSpan);
             when(metricsHelper.buildTagsFromSubscriptionEventMessage(eventMessage)).thenReturn(Tags.empty());
             when(metricsHelper.getRegistry()).thenReturn(meterRegistry);
 
@@ -240,7 +221,7 @@ class DeliveryTaskTest {
                     CALLBACK_URL,
                     0L,
                     0,
-                    deliveryResultListener,
+                    deliveryService,
                     deliveryTaskFactory,
                     callbackUrlCache,
                     null,
@@ -260,14 +241,7 @@ class DeliveryTaskTest {
             verify(deliverySpan, never()).annotate("Circuit Breaker open! Delivery skipped");
             verify(deliverySpan).annotate("make callback request");
 
-            verify(tracer).startDebugSpan("callback");
-            verify(callbackSpan).kind(Span.Kind.CLIENT);
-            verify(tracer).withDebugSpanInScope(callbackSpan);
-            verify(tracer).addTagsToSpanFromEventMessage(callbackSpan, eventMessage);
-            verify(tracer).addTagsToSpanFromSubscriptionEventMessage(callbackSpan, eventMessage);
-            verify(callbackSpan).tag("callbackUrl", CALLBACK_URL);
             verify(restClient).callback(eq(eventMessage), eq(CALLBACK_URL), any());
-            verify(callbackSpan).finish();
 
             assertEquals(1.0, meterRegistry.get(METRIC_CALLBACK_HTTP_CODE_COUNT)
                     .tag(TAG_HTTP_CODE, String.valueOf(HttpStatus.CREATED.value()))
@@ -277,15 +251,7 @@ class DeliveryTaskTest {
             verify(cometMetrics).recordE2eEventLatencyAndExtendMetadata(
                     eventMessage, MetricNames.EndToEndLatencyCustomer, HorizonComponentId.UNSET
             );
-
-            verify(deliveryResultListener).handleDeliveryResult(new DeliveryResult(
-                    eventMessage,
-                    Status.DELIVERED,
-                    false,
-                    null,
-                    deliverySpan,
-                    HorizonComponentId.UNSET
-            ));
+            verify(deliveryService).updateDeliveryStateToDelivered(deliverySpan, eventMessage);
         }
 
         @Test
@@ -295,7 +261,6 @@ class DeliveryTaskTest {
             long backoffInterval = 1500L;
             int retryCount = 2;
             when(circuitBreakerCacheService.isCircuitBreakerOpenOrChecking(TEST_SUBSCRIPTION_ID)).thenReturn(false);
-            when(tracer.startDebugSpan("callback")).thenReturn(callbackSpan);
             when(metricsHelper.buildTagsFromSubscriptionEventMessage(eventMessage)).thenReturn(Tags.empty());
             when(metricsHelper.getRegistry()).thenReturn(meterRegistry);
 
@@ -304,7 +269,7 @@ class DeliveryTaskTest {
                     CALLBACK_URL,
                     backoffInterval,
                     retryCount,
-                    deliveryResultListener,
+                    deliveryService,
                     deliveryTaskFactory,
                     callbackUrlCache,
                     deliverySpan,
@@ -322,16 +287,7 @@ class DeliveryTaskTest {
             verify(deliverySpan).annotate("waited 1500 milliseconds for backoff");
             verify(deliverySpan).annotate("make callback request");
             verify(restClient).callback(eq(eventMessage), eq(CALLBACK_URL), any());
-            verify(callbackSpan).finish();
-
-            verify(deliveryResultListener).handleDeliveryResult(new DeliveryResult(
-                    eventMessage,
-                    Status.DELIVERED,
-                    false,
-                    null,
-                    deliverySpan,
-                    HorizonComponentId.UNSET
-            ));
+            verify(deliveryService).updateDeliveryStateToDelivered(deliverySpan, eventMessage);
         }
 
         @Test
@@ -350,7 +306,7 @@ class DeliveryTaskTest {
                     CALLBACK_URL,
                     0L,
                     0,
-                    deliveryResultListener,
+                    deliveryService,
                     deliveryTaskFactory,
                     callbackUrlCache,
                     null,
@@ -372,14 +328,7 @@ class DeliveryTaskTest {
                     .counter()
                     .count());
 
-            verify(deliveryResultListener).handleDeliveryResult(new DeliveryResult(
-                    eventMessage,
-                    Status.FAILED,
-                    false,
-                    hazelcastException,
-                    deliverySpan,
-                    HorizonComponentId.UNSET
-            ));
+            verify(deliveryService).updateDeliveryStateToFailed(deliverySpan, eventMessage);
         }
     }
 
@@ -413,7 +362,7 @@ class DeliveryTaskTest {
                     blankCallbackUrl,
                     0L,
                     0,
-                    deliveryResultListener,
+                    deliveryService,
                     deliveryTaskFactory,
                     callbackUrlCache,
                     null,
@@ -432,25 +381,12 @@ class DeliveryTaskTest {
             verify(tracer, never()).addTagsToSpanFromEventMessage(callbackSpan, eventMessage);
             verify(tracer, never()).addTagsToSpanFromSubscriptionEventMessage(callbackSpan, eventMessage);
 
-            verifyNoInteractions(restClient, cometMetrics, callbackUrlCache, callbackSpan);
+            verifyNoInteractions(restClient, cometMetrics, callbackSpan);
 
-            var resultCaptor = ArgumentCaptor.forClass(DeliveryResult.class);
-            verify(deliveryResultListener).handleDeliveryResult(resultCaptor.capture());
+            verify(deliveryService).updateDeliveryStateToFailed(deliverySpan, eventMessage);
+            verify(callbackUrlCache).getDeliveryTargetInformation(TEST_SUBSCRIPTION_ID);
 
-            DeliveryResult result = resultCaptor.getValue();
-            assertEquals(eventMessage, result.subscriptionEventMessage());
-            assertEquals(Status.FAILED, result.status());
-            assertFalse(result.shouldRedeliver());
-            assertEquals(deliverySpan, result.deliverySpan());
-            assertEquals(HorizonComponentId.UNSET, result.messageSource());
-
-            CallbackUrlNotFoundException exception = assertInstanceOf(CallbackUrlNotFoundException.class, result.exception());
-            assertEquals(
-                    String.format("No callback url found for EventMessage with id %s in cache and additional fields", eventMessage.getUuid()),
-                    exception.getMessage()
-            );
-
-            verify(deliverySpan).error(exception);
+            verify(deliverySpan).error(any(CallbackUrlNotFoundException.class));
             verify(deliverySpan, never()).finish();
 
             assertEquals(1.0, meterRegistry.get(METRIC_INTERNAL_EXCEPTION_COUNT)
@@ -461,9 +397,99 @@ class DeliveryTaskTest {
         }
     }
 
+    @Nested
+    @DisplayName("Branch 4.4: Invalid Callback URI Syntax")
+    class InvalidCallbackUriTest {
+
+        @Mock
+        private DebugSpanWrapper callbackSpan;
+        @Mock
+        private OAuth2TokenCache oAuth2TokenCache;
+        @Mock
+        private CloseableHttpAsyncClient httpClient;
+        @Mock
+        private ObjectMapper objectMapper;
+        @Mock
+        private ApplicationContext applicationContext;
+
+        private SimpleMeterRegistry meterRegistry;
+        private DeliveryTaskFactory realRestClientTaskFactory;
+
+        @BeforeEach
+        void setUpRealRestClient() throws InterruptedException {
+            meterRegistry = new SimpleMeterRegistry();
+            RestClient realRestClient = new RestClient(
+                    cometConfig,
+                    tracer,
+                    oAuth2TokenCache,
+                    httpClient,
+                    objectMapper,
+                    applicationContext
+            );
+            clearInvocations(oAuth2TokenCache);
+
+            realRestClientTaskFactory = new DeliveryTaskFactory(
+                    cometConfig,
+                    realRestClient,
+                    stateService,
+                    circuitBreakerCacheService,
+                    deDuplicationService,
+                    tracer,
+                    metricsHelper,
+                    cometMetrics,
+                    executor
+            );
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"http://invalid url", "://missing-scheme"})
+        @DisplayName("Finish callback span, record IllegalArgumentException metric, and emit non-retryable FAILED on invalid URI syntax")
+        void shouldEmitFailedWithIllegalArgumentExceptionWhenCallbackUrlHasInvalidUriSyntax(String invalidCallbackUrl) throws JsonProcessingException {
+            // given
+            when(tracer.startSpan("delivery")).thenReturn(deliverySpan);
+            when(circuitBreakerCacheService.isCircuitBreakerOpenOrChecking(TEST_SUBSCRIPTION_ID)).thenReturn(false);
+            when(metricsHelper.buildTagsFromSubscriptionEventMessage(eventMessage)).thenReturn(Tags.empty());
+            when(metricsHelper.getRegistry()).thenReturn(meterRegistry);
+
+            var record = new DeliveryTaskRecord(
+                    eventMessage,
+                    invalidCallbackUrl,
+                    0L,
+                    0,
+                    deliveryService,
+                    realRestClientTaskFactory,
+                    callbackUrlCache,
+                    null,
+                    HorizonComponentId.UNSET,
+                    null
+            );
+            DeliveryTask task = realRestClientTaskFactory.createNew(record);
+
+            // when
+            task.run();
+
+            // then
+            verify(deliverySpan).annotate("make callback request");
+
+            verifyNoInteractions(oAuth2TokenCache, httpClient, cometMetrics, callbackUrlCache, callbackSpan);
+
+            verify(objectMapper).writeValueAsBytes(any());
+            verify(deliveryService).updateDeliveryStateToFailed(deliverySpan, eventMessage);
+
+            verify(deliverySpan).error(any(IllegalArgumentException.class));
+            verify(deliverySpan, never()).finish();
+
+            assertEquals(1.0, meterRegistry.get(METRIC_INTERNAL_EXCEPTION_COUNT)
+                    .tag("exception_class", IllegalArgumentException.class.getName())
+                    .counter()
+                    .count());
+            assertNull(meterRegistry.find(METRIC_CALLBACK_HTTP_CODE_COUNT).counter());
+        }
+    }
+
     private void setupRestClientWithResponseCallback() throws IOException, CouldNotFetchAccessTokenException {
         final var successfulStatusCode = 201;
-        reset(restClient);
+        reset(restClient, executor);
         doAnswer(invocation -> {
             invocation.getArgument(0, Runnable.class).run();
             return null;

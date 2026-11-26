@@ -4,6 +4,7 @@
 
 package de.telekom.horizon.comet.client;
 
+import brave.Span;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
@@ -108,7 +109,7 @@ public class RestClient {
      *
      * @param subscriptionEventMessage The subscription event message to be delivered.
      * @param callbackUrl              The callbackUrl to which the event should be sent.
-     * @throws IOException       If an IO error occurs while making the HTTP request.
+     * @throws IOException If an IO error occurs while making the HTTP request.
      */
     public void callback(
             final SubscriptionEventMessage subscriptionEventMessage,
@@ -116,15 +117,48 @@ public class RestClient {
             final FutureCallback<Message<HttpResponse, Void>> responseHandler
     ) throws IOException, CouldNotFetchAccessTokenException {
         // encodes the payload into UTF-8
-        var payload = objectMapper.writeValueAsBytes(subscriptionEventMessage.getEvent());
+        final var payload = objectMapper.writeValueAsBytes(subscriptionEventMessage.getEvent());
 
-        var requestBuilder = AsyncRequestBuilder.post(callbackUrl);
+        final var requestBuilder = AsyncRequestBuilder.post(callbackUrl);
         addHeaderToRequest(requestBuilder, subscriptionEventMessage.getHttpHeaders(), subscriptionEventMessage.getEnvironment());
-        var request = requestBuilder
+        final var request = requestBuilder
                 .setEntity(new BasicAsyncEntityProducer(payload, ContentType.APPLICATION_JSON))
                 .build();
 
-        httpClient.execute(request, new BasicResponseConsumer<>(new DiscardingEntityConsumer<>()), responseHandler);
+        final var callbackSpan = tracer.startDebugSpan("callback");
+        callbackSpan.kind(Span.Kind.CLIENT);
+        try (var ignored = tracer.withDebugSpanInScope(callbackSpan)) {
+            tracer.addTagsToSpanFromEventMessage(callbackSpan, subscriptionEventMessage);
+            tracer.addTagsToSpanFromSubscriptionEventMessage(callbackSpan, subscriptionEventMessage);
+            callbackSpan.tag("callbackUrl", callbackUrl);
+            log.info("Executing callback for EventMessage with id '{}' at '{}'", subscriptionEventMessage.getUuid(), callbackUrl);
+
+            httpClient.execute(
+                    request,
+                    new BasicResponseConsumer<>(new DiscardingEntityConsumer<>()),
+                    new FutureCallback<Message<HttpResponse, Void>>() {
+                        @Override
+                        public void completed(Message<HttpResponse, Void> response) {
+                            callbackSpan.finish();
+                            responseHandler.completed(response);
+                        }
+
+                        @Override
+                        public void failed(Exception ex) {
+                            callbackSpan.finish();
+                            responseHandler.failed(ex);
+                        }
+
+                        @Override
+                        public void cancelled() {
+                            callbackSpan.finish();
+                            responseHandler.cancelled();
+                        }
+                    });
+        } catch (Exception ex) {
+            callbackSpan.finish();
+            throw ex;
+        }
     }
 
     /**
@@ -142,9 +176,9 @@ public class RestClient {
     /**
      * Adds headers to the HTTP request based on the provided map and environment.
      *
-     * @param requestBuilder     The HTTP request to which headers are added.
-     * @param httpHeaders The map of headers to be added.
-     * @param environment The environment for which headers are added.
+     * @param requestBuilder The HTTP request to which headers are added.
+     * @param httpHeaders    The map of headers to be added.
+     * @param environment    The environment for which headers are added.
      */
     private void addHeaderToRequest(AsyncRequestBuilder requestBuilder, Map<String, List<String>> httpHeaders, String environment) throws CouldNotFetchAccessTokenException {
         if (httpHeaders != null) {

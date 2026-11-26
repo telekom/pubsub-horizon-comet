@@ -4,6 +4,7 @@
 
 package de.telekom.horizon.comet.service;
 
+import brave.Span;
 import com.hazelcast.core.HazelcastInstanceNotActiveException;
 import de.telekom.eni.pandora.horizon.cache.service.DeDuplicationService;
 import de.telekom.eni.pandora.horizon.model.event.Status;
@@ -13,9 +14,6 @@ import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.cache.DeliveryTargetInformation;
 import de.telekom.horizon.comet.config.CometConfig;
-import de.telekom.horizon.comet.exception.CallbackUrlNotFoundException;
-import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
-import de.telekom.horizon.comet.model.DeliveryResult;
 import de.telekom.horizon.comet.model.DeliveryTaskRecord;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +36,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Slf4j
 @Service
-public class DeliveryService implements DeliveryResultListener {
+public class DeliveryService {
 
     private final ThreadPoolTaskExecutor deliveryTaskExecutor;
 
@@ -116,7 +114,10 @@ public class DeliveryService implements DeliveryResultListener {
         var callbackUrlOrEmptyStr = getCallbackUrlOrEmptyStr(subscriptionEventMessage);
         // if callbackUrl is empty, we throw an CallbackUrlNotFoundException later, which gets handled
 
-        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, 0, 0, this, deliveryTaskFactory, callbackUrlCache, null, messageSource, null);
+        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(
+                subscriptionEventMessage, callbackUrlOrEmptyStr, 0, 0, this,
+                deliveryTaskFactory, callbackUrlCache, null, messageSource, null
+        );
         var deliveryTask = deliveryTaskFactory.createNew(deliveryTaskRecord);
 
         // Do not wait for thread
@@ -124,80 +125,39 @@ public class DeliveryService implements DeliveryResultListener {
     }
 
 
-    /**
-     * Handles the delivery result, updating the state and managing redelivery if necessary.
-     * <p>
-     * This method processes the information contained in the {@code DeliveryResult} and takes appropriate actions
-     * such as updating the delivery status, handling redelivery attempts, and managing circuit breaker states.
-     *
-     * @param deliveryResult The {@code DeliveryResult} containing information about the delivery outcome.
-     *                       It includes the delivery status, subscription event message, observation,
-     *                       and a flag indicating whether redelivery should be attempted.
-     */
-    @Override
-    public void handleDeliveryResult(DeliveryResult deliveryResult) {
-        var status = deliveryResult.status();
-        var subscriptionEventMessage = deliveryResult.subscriptionEventMessage();
-        var shouldRedeliver = deliveryResult.shouldRedeliver();
-
-        // Status can only be FAILED or DELIVERED
-        // shouldRedeliver is only true on FAILED with CallbackException, InterruptedException, HazelcastNotActiveException or IOException
-        if (shouldRedeliver) {
-            status = Status.DELIVERING;
-            var isRedelivering = tryToRedeliver(deliveryResult);
-            if (!isRedelivering) {
-                if (isOptedOutFromCircuitBreaker(subscriptionEventMessage.getSubscriptionId())) {
-                    status = Status.FAILED;
-                } else {
-                    status = Status.WAITING;
-                    openCircuitBreaker(subscriptionEventMessage);
-                }
-            }
-        }
-
-        // Status can be FAILED, DELIVERED, DELIVERING or WAITING, we don't want to set DELIVERING,
-        // because it was set before the acknowledgment. Therefore, only write state != DELIVERING
-        if (!status.equals(Status.DELIVERING) && !(deliveryResult.exception() instanceof CouldNotFetchAccessTokenException)) {
-            retryCounts.remove(subscriptionEventMessage.getUuid());
-
-            updateDeliveryState(status, subscriptionEventMessage, deliveryResult);
+    private void runDeliveryStateUpdate(Span deliverySpan, String subscriptionEventMessageUuid, Runnable updateFn) {
+        retryCounts.remove(subscriptionEventMessageUuid);
+        try (var ignored = tracer.withSpanInScope(deliverySpan)) {
+            updateFn.run();
+        } finally {
+            deliverySpan.finish();
         }
     }
 
-    /**
-     * Updates the delivery state based on the status and other information from the DeliveryResult.
-     * This method also tracks the event for deduplication when necessary.
-     *
-     * @param status                   The final status of the delivery.
-     * @param subscriptionEventMessage The SubscriptionEventMessage associated with the delivery.
-     * @param deliveryResult           The DeliveryResult containing information about the delivery outcome.
-     */
-    private void updateDeliveryState(Status status, SubscriptionEventMessage subscriptionEventMessage, DeliveryResult deliveryResult) {
-        try (var ignored = tracer.withSpanInScope(deliveryResult.deliverySpan())) {
-            var afterSendFuture = stateService.updateState(status, subscriptionEventMessage, deliveryResult.exception());
-            if (status.equals(Status.DELIVERED) || status.equals(Status.FAILED)) {
-                var deliveryTypeOfSubscription = callbackUrlCache
-                        .getDeliveryTargetInformation(subscriptionEventMessage.getSubscriptionId())
-                        .map(DeliveryTargetInformation::getDeliveryType);
+    public void updateDeliveryStateToDelivered(Span deliverySpan, SubscriptionEventMessage subscriptionEventMessage) {
+        runDeliveryStateUpdate(
+                deliverySpan,
+                subscriptionEventMessage.getUuid(),
+                () -> stateService
+                        .updateState(Status.DELIVERED, subscriptionEventMessage, null)
+                        .thenAccept(result -> trackEventForDeduplication(subscriptionEventMessage))
+        );
+    }
 
-                if (status == Status.FAILED
-                        && deliveryTypeOfSubscription.isPresent()
-                        && (deliveryTypeOfSubscription.get().equals("sse") || deliveryTypeOfSubscription.get().equals("server_sent_event"))
-                        && deliveryResult.exception() instanceof CallbackUrlNotFoundException) {
+    public void updateDeliveryStateToFailed(Span deliverySpan, SubscriptionEventMessage subscriptionEventMessage) {
+        runDeliveryStateUpdate(
+                deliverySpan,
+                subscriptionEventMessage.getUuid(),
+                () -> stateService.updateState(Status.FAILED, subscriptionEventMessage, null)
+        );
+    }
 
-                    log.warn("Event with id {} and deliveryType {} and error {} was skipped by deduplication",
-                            subscriptionEventMessage.getUuid(),
-                            deliveryTypeOfSubscription.orElse("unknown"),
-                            deliveryResult.exception().getClass().getSimpleName());
-
-                    return;
-                }
-
-                afterSendFuture.thenAccept(result -> trackEventForDeduplication(subscriptionEventMessage));
-            }
-        } finally {
-            deliveryResult.deliverySpan().finish();
-        }
+    public void updateDeliveryStateToWaiting(Span deliverySpan, SubscriptionEventMessage subscriptionEventMessage) {
+        runDeliveryStateUpdate(
+                deliverySpan,
+                subscriptionEventMessage.getUuid(),
+                () -> stateService.updateState(Status.WAITING, subscriptionEventMessage, null)
+        );
     }
 
     /**
@@ -253,41 +213,43 @@ public class DeliveryService implements DeliveryResultListener {
                 Optional.ofNullable(deliveryTargetInformation.getUrl()).orElse("")).orElse("");
     }
 
-    /**
-     * Tries to redeliver an event with exponential backoff in the redelivery thread pool.
-     *
-     * @param deliveryResult The DeliveryResult containing information about the original delivery.
-     * @return True if redelivery is scheduled; otherwise, false if the maximum retries are reached.
-     */
-    private boolean tryToRedeliver(DeliveryResult deliveryResult) {
-        var subscriptionEventMessage = deliveryResult.subscriptionEventMessage();
-        var deliverySpan = deliveryResult.deliverySpan();
-
-        var eventUuid = subscriptionEventMessage.getUuid();
-        var retryCount = Optional.ofNullable(retryCounts.get(eventUuid)).orElse(0);
+    public void redeliver(Span deliverySpan, SubscriptionEventMessage subscriptionEventMessage, HorizonComponentId horizonComponentId) {
+        final var eventUuid = subscriptionEventMessage.getUuid();
+        final var retryCount = Optional.ofNullable(retryCounts.get(eventUuid)).orElse(0);
         if (retryCount >= cometConfig.getMaxRetries()) {
             log.info("Retries for event with id {} exhausted (Retry {}/{})", eventUuid, retryCount, cometConfig.getMaxRetries());
             deliverySpan.annotate("retries exhausted!");
-            return false;
+            updateDeliveryStateOnRedeliveryFailure(deliverySpan, subscriptionEventMessage);
+            return;
         }
 
-        var backoffInterval = increaseAndGetBackOffInterval(eventUuid); // increases retryCount by 1
-        var callbackUrlOrEmptyStr = getCallbackUrlOrEmptyStr(subscriptionEventMessage);
+        final var backoffInterval = increaseAndGetBackOffInterval(eventUuid); // increases retryCount by 1
+        final var callbackUrlOrEmptyStr = getCallbackUrlOrEmptyStr(subscriptionEventMessage);
 
         log.info("Scheduling redelivery task for event with id {} and a delay of {}ms (Retry {}/{})",
                 eventUuid, backoffInterval, retryCount, cometConfig.getMaxRetries());
 
-
-        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(subscriptionEventMessage, callbackUrlOrEmptyStr, backoffInterval, retryCount, this, deliveryTaskFactory, callbackUrlCache, deliverySpan, deliveryResult.messageSource(), null);
-        var redeliverTask = deliveryTaskFactory.createNew(deliveryTaskRecord);
+        DeliveryTaskRecord deliveryTaskRecord = new DeliveryTaskRecord(
+                subscriptionEventMessage, callbackUrlOrEmptyStr, backoffInterval, retryCount, this,
+                deliveryTaskFactory, callbackUrlCache, deliverySpan, horizonComponentId, null
+        );
+        final var redeliverTask = deliveryTaskFactory.createNew(deliveryTaskRecord);
 
         try {
             redeliveryTaskExecutor.schedule(tracer.withCurrentTraceContext(redeliverTask), backoffInterval, TimeUnit.MILLISECONDS);
         } catch (Exception e) {
             log.warn("Unable to schedule redelivery for the message with uuid {}", subscriptionEventMessage.getUuid(), e);
-            return false;
+            updateDeliveryStateOnRedeliveryFailure(deliverySpan, subscriptionEventMessage);
         }
-        return true;
+    }
+
+    private void updateDeliveryStateOnRedeliveryFailure(Span deliverySpan, SubscriptionEventMessage subscriptionEventMessage) {
+        if (isOptedOutFromCircuitBreaker(subscriptionEventMessage.getSubscriptionId())) {
+            updateDeliveryStateToFailed(deliverySpan, subscriptionEventMessage);
+        } else {
+            updateDeliveryStateToWaiting(deliverySpan, subscriptionEventMessage);
+            openCircuitBreaker(subscriptionEventMessage);
+        }
     }
 
     /**
