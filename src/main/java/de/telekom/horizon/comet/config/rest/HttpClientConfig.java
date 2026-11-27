@@ -5,10 +5,16 @@
 package de.telekom.horizon.comet.config.rest;
 
 import de.telekom.horizon.comet.config.CometConfig;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.config.TlsConfig;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManager;
+import org.apache.hc.client5.http.impl.nio.PoolingAsyncClientConnectionManagerBuilder;
+import org.apache.hc.core5.http2.HttpVersionPolicy;
+import org.apache.hc.core5.reactor.IOReactorConfig;
+import org.apache.hc.core5.util.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -35,19 +41,6 @@ public class HttpClientConfig {
     }
 
     /**
-     * Creates and configures the {@code PoolingHttpClientConnectionManager} bean used for managing HTTP connections.
-     *
-     * @return The configured {@code PoolingHttpClientConnectionManager} bean.
-     */
-    @Bean
-    public PoolingHttpClientConnectionManager poolingHttpClientConnectionManager() {
-        var connectionManager = new PoolingHttpClientConnectionManager();
-        connectionManager.setMaxTotal(cometConfig.getMaxConnections());
-        connectionManager.setDefaultMaxPerRoute(cometConfig.getMaxConnections());
-        return connectionManager;
-    }
-
-    /**
      * Creates and configures the {@code RequestConfig} bean for request timeout settings.
      *
      * @return The configured {@code RequestConfig} bean.
@@ -55,26 +48,55 @@ public class HttpClientConfig {
     @Bean
     public RequestConfig requestConfig() {
         return RequestConfig.custom()
-                .setConnectionRequestTimeout((int) cometConfig.getMaxTimeout())
-                .setConnectTimeout((int) cometConfig.getMaxTimeout())
-                .setSocketTimeout((int) cometConfig.getMaxTimeout())
+                .setConnectionRequestTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
                 .build();
     }
 
     /**
-     * Creates and configures the {@code CloseableHttpClient} bean using the provided connection manager and request config.
+     * Creates and configures the {@code PoolingAsyncClientConnectionManager} bean used for managing HTTP connections.
      *
-     * @param poolingHttpClientConnectionManager The PoolingHttpClientConnectionManager bean.
-     * @param requestConfig                      The RequestConfig bean.
-     * @return The configured CloseableHttpClient bean.
+     * @return The configured {@code PoolingAsyncClientConnectionManager} bean.
      */
     @Bean
-    public CloseableHttpClient httpClient(PoolingHttpClientConnectionManager poolingHttpClientConnectionManager, RequestConfig requestConfig) {
-        return HttpClientBuilder
-                .create()
-                .setConnectionManager(poolingHttpClientConnectionManager)
-                .setDefaultRequestConfig(requestConfig)
-                .disableCookieManagement()
+    public PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager() {
+        return PoolingAsyncClientConnectionManagerBuilder.create()
+                .setDefaultConnectionConfig(ConnectionConfig.custom()
+                        .setConnectTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
+                        .build())
+                .setDefaultTlsConfig(TlsConfig.custom()
+                        .setVersionPolicy(HttpVersionPolicy.NEGOTIATE)
+                        //.setHandshakeTimeout(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
+                        .build())
+                .setMessageMultiplexing(true)
+                .setMaxConnTotal(cometConfig.getMaxConnections())
+                //todo: with h2 we might as well want to go with the default 5 here, due to streams
+                //.setMaxConnPerRoute(cometConfig.getMaxConnections())
                 .build();
+    }
+
+    @Bean
+    public IOReactorConfig ioReactorConfig() {
+        return IOReactorConfig.custom()
+                .build();
+    }
+
+    @Bean
+    public CloseableHttpAsyncClient httpAsyncClient(
+            PoolingAsyncClientConnectionManager poolingAsyncClientConnectionManager,
+            RequestConfig requestConfig,
+            IOReactorConfig ioReactorConfig) {
+        final var client = HttpAsyncClients.custom()
+                .setConnectionManager(poolingAsyncClientConnectionManager)
+                .setIOReactorConfig(ioReactorConfig)
+                .setDefaultRequestConfig(requestConfig)
+                .evictExpiredConnections()
+                .evictIdleConnections(Timeout.ofMilliseconds(cometConfig.getMaxTimeout()))
+                //.setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
+                .disableCookieManagement()
+                .disableAutomaticRetries()
+                .build();
+        client.start();
+
+        return client;
     }
 }

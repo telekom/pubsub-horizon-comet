@@ -4,20 +4,24 @@
 
 package de.telekom.horizon.comet.client;
 
+import brave.Span;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.telekom.eni.pandora.horizon.model.event.SubscriptionEventMessage;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
-import de.telekom.horizon.comet.cache.CallbackUrlCache;
 import de.telekom.horizon.comet.config.CometConfig;
-import de.telekom.horizon.comet.exception.CallbackException;
 import de.telekom.horizon.comet.exception.CouldNotFetchAccessTokenException;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpRequestBase;
-import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.message.BasicHeader;
+import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.core5.concurrent.FutureCallback;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.HttpResponse;
+import org.apache.hc.core5.http.Message;
+import org.apache.hc.core5.http.message.BasicHeader;
+import org.apache.hc.core5.http.nio.entity.BasicAsyncEntityProducer;
+import org.apache.hc.core5.http.nio.entity.DiscardingEntityConsumer;
+import org.apache.hc.core5.http.nio.support.AsyncRequestBuilder;
+import org.apache.hc.core5.http.nio.support.BasicResponseConsumer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
@@ -27,10 +31,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
  * The {@code RestClient} class is responsible for sending subscription event messages
@@ -44,11 +49,9 @@ public class RestClient {
     private final OAuth2TokenCache oAuth2TokenCache;
     private final CometConfig cometConfig;
     private final HorizonTracer tracer;
-    private final CloseableHttpClient httpClient;
+    private final CloseableHttpAsyncClient httpClient;
     private final ObjectMapper objectMapper;
     private final ApplicationContext context;
-
-    private final CallbackUrlCache callbackUrlCache;
 
     /**
      * Construct of a new {@code RestClient} with the specified params.
@@ -60,12 +63,11 @@ public class RestClient {
      * @param objectMapper     The ObjectMapper instance for JSON serialization and deserialization.
      */
     @Autowired
-    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CallbackUrlCache callbackUrlCache, CloseableHttpClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
+    public RestClient(CometConfig cometConfig, HorizonTracer tracer, OAuth2TokenCache oAuth2TokenCache, CloseableHttpAsyncClient httpClient, ObjectMapper objectMapper, ApplicationContext context) throws InterruptedException {
         this.cometConfig = cometConfig;
         this.tracer = tracer;
 
         this.oAuth2TokenCache = oAuth2TokenCache;
-        this.callbackUrlCache = callbackUrlCache;
 
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
@@ -73,7 +75,6 @@ public class RestClient {
         this.context = context;
 
         retrieveAllAccessTokens(context);
-
     }
 
     /**
@@ -108,40 +109,55 @@ public class RestClient {
      *
      * @param subscriptionEventMessage The subscription event message to be delivered.
      * @param callbackUrl              The callbackUrl to which the event should be sent.
-     * @throws CallbackException If there is an error during the callback process.
-     * @throws IOException       If an IO error occurs while making the HTTP request.
+     * @throws IOException If an IO error occurs while making the HTTP request.
      */
-    public void callback(SubscriptionEventMessage subscriptionEventMessage, String callbackUrl) throws CallbackException, IOException, CouldNotFetchAccessTokenException {
-        var request = new HttpPost(callbackUrl);
-        var event = subscriptionEventMessage.getEvent();
+    public void callback(
+            final SubscriptionEventMessage subscriptionEventMessage,
+            final String callbackUrl,
+            final FutureCallback<Message<HttpResponse, Void>> responseHandler
+    ) throws IOException, CouldNotFetchAccessTokenException {
+        // encodes the payload into UTF-8
+        final var payload = objectMapper.writeValueAsBytes(subscriptionEventMessage.getEvent());
 
-        addHeaderToRequest(request, subscriptionEventMessage.getHttpHeaders(), subscriptionEventMessage.getEnvironment());
+        final var requestBuilder = AsyncRequestBuilder.post(callbackUrl);
+        addHeaderToRequest(requestBuilder, subscriptionEventMessage.getHttpHeaders(), subscriptionEventMessage.getEnvironment());
+        final var request = requestBuilder
+                .setEntity(new BasicAsyncEntityProducer(payload, ContentType.APPLICATION_JSON))
+                .build();
 
-        // throws JsonProcessingException -> IOException
-        var payload = new StringEntity(objectMapper.writeValueAsString(event), StandardCharsets.UTF_8);
-        request.setEntity(payload);
+        final var callbackSpan = tracer.startDebugSpan("callback");
+        callbackSpan.kind(Span.Kind.CLIENT);
+        try (var ignored = tracer.withDebugSpanInScope(callbackSpan)) {
+            tracer.addTagsToSpanFromEventMessage(callbackSpan, subscriptionEventMessage);
+            tracer.addTagsToSpanFromSubscriptionEventMessage(callbackSpan, subscriptionEventMessage);
+            callbackSpan.tag("callbackUrl", callbackUrl);
+            log.info("Executing callback for EventMessage with id '{}' at '{}'", subscriptionEventMessage.getUuid(), callbackUrl);
 
-        // throws IOException
-        executeRequest(callbackUrl, request);
-    }
+            httpClient.execute(
+                    request,
+                    new BasicResponseConsumer<>(new DiscardingEntityConsumer<>()),
+                    new FutureCallback<Message<HttpResponse, Void>>() {
+                        @Override
+                        public void completed(Message<HttpResponse, Void> response) {
+                            callbackSpan.finish();
+                            responseHandler.completed(response);
+                        }
 
-    /**
-     * Executes the HTTP request and validates the response status code.
-     *
-     * @param callbackUrl The callbackUrl to which the request is made.
-     * @param request     The HTTP request to be executed.
-     * @throws IOException       If an IO error occurs during the HTTP request.
-     * @throws CallbackException If the response status code is not acceptable.
-     */
-    private void executeRequest(String callbackUrl, HttpPost request) throws IOException, CallbackException {
-        try (var response = httpClient.execute(request)) {
-            // Compare response status code with acceptable status codes from config
-            var statusCode = response.getStatusLine().getStatusCode();
-            var successfulStatusCodes = cometConfig.getSuccessfulStatusCodes();
+                        @Override
+                        public void failed(Exception ex) {
+                            callbackSpan.finish();
+                            responseHandler.failed(ex);
+                        }
 
-            if (!successfulStatusCodes.contains(statusCode)) {
-                throw new CallbackException(String.format("Error while delivering event to callback '%s': %s", callbackUrl, response.getStatusLine().getReasonPhrase()), statusCode);
-            }
+                        @Override
+                        public void cancelled() {
+                            callbackSpan.finish();
+                            responseHandler.cancelled();
+                        }
+                    });
+        } catch (Exception ex) {
+            callbackSpan.finish();
+            throw ex;
         }
     }
 
@@ -152,7 +168,7 @@ public class RestClient {
      * @param key     The header key to be overridden.
      * @param value   The new value for the header.
      */
-    private void overrideHeader(HttpRequestBase request, String key, String value) {
+    private void overrideHeader(AsyncRequestBuilder request, String key, String value) {
         request.removeHeaders(key);
         request.setHeader(new BasicHeader(key, value));
     }
@@ -160,25 +176,25 @@ public class RestClient {
     /**
      * Adds headers to the HTTP request based on the provided map and environment.
      *
-     * @param request     The HTTP request to which headers are added.
-     * @param httpHeaders The map of headers to be added.
-     * @param environment The environment for which headers are added.
+     * @param requestBuilder The HTTP request to which headers are added.
+     * @param httpHeaders    The map of headers to be added.
+     * @param environment    The environment for which headers are added.
      */
-    private void addHeaderToRequest(HttpPost request, Map<String, List<String>> httpHeaders, String environment) throws CouldNotFetchAccessTokenException {
+    private void addHeaderToRequest(AsyncRequestBuilder requestBuilder, Map<String, List<String>> httpHeaders, String environment) throws CouldNotFetchAccessTokenException {
         if (httpHeaders != null) {
             httpHeaders.forEach((k, v) -> {
                 if (cometConfig.getHeaderPropagationBlacklist().stream().noneMatch(k::matches)) {
-                    v.forEach(e -> request.addHeader(k, e));
+                    v.forEach(e -> requestBuilder.addHeader(k, e));
                 }
             });
         }
 
-        overrideHeader(request, HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
-        overrideHeader(request, HttpHeaders.AUTHORIZATION, "Bearer " + oAuth2TokenCache.getToken(Optional.ofNullable(environment).orElse("default")));
-        overrideHeader(request, HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
-        overrideHeader(request, HttpHeaders.ACCEPT_CHARSET, StandardCharsets.UTF_8.displayName());
+        overrideHeader(requestBuilder, HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        overrideHeader(requestBuilder, HttpHeaders.AUTHORIZATION, "Bearer " + oAuth2TokenCache.getToken(Optional.ofNullable(environment).orElse("default")));
+        overrideHeader(requestBuilder, HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+        overrideHeader(requestBuilder, HttpHeaders.ACCEPT_CHARSET, UTF_8.displayName());
 
-        tracer.getCurrentTracingHeaders().forEach((key, value) -> overrideHeader(request, key, value));
+        tracer.getCurrentTracingHeaders().forEach((key, value) -> overrideHeader(requestBuilder, key, value));
     }
 
     /**

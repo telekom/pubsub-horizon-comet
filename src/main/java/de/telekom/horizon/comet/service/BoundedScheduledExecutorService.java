@@ -6,7 +6,7 @@ package de.telekom.horizon.comet.service;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 import java.util.Collection;
 import java.util.List;
@@ -40,33 +40,33 @@ public class BoundedScheduledExecutorService implements ScheduledExecutorService
         }
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public ScheduledFuture<?> schedule(@NotNull Runnable runnable, long delay, @NotNull TimeUnit timeUnit) {
+    public ScheduledFuture<?> schedule(@NonNull Runnable runnable, long delay, @NonNull TimeUnit timeUnit) {
         checkQueueCapacity();
         return delegate.schedule(runnable, delay, timeUnit);
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public <V> ScheduledFuture<V> schedule(@NotNull Callable<V> callable, long delay,
-                                           @NotNull TimeUnit timeUnit) {
+    public <V> ScheduledFuture<V> schedule(@NonNull Callable<V> callable, long delay,
+                                           @NonNull TimeUnit timeUnit) {
         checkQueueCapacity();
         return delegate.schedule(callable, delay, timeUnit);
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public ScheduledFuture<?> scheduleAtFixedRate(@NotNull Runnable runnable, long initialDelay, long period,
-                                                  @NotNull TimeUnit timeUnit) {
+    public ScheduledFuture<?> scheduleAtFixedRate(@NonNull Runnable runnable, long initialDelay, long period,
+                                                  @NonNull TimeUnit timeUnit) {
         checkQueueCapacity();
         return delegate.scheduleAtFixedRate(runnable, initialDelay, period, timeUnit);
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public ScheduledFuture<?> scheduleWithFixedDelay(@NotNull Runnable runnable, long initialDelay, long delay,
-                                                     @NotNull TimeUnit timeUnit) {
+    public ScheduledFuture<?> scheduleWithFixedDelay(@NonNull Runnable runnable, long initialDelay, long delay,
+                                                     @NonNull TimeUnit timeUnit) {
         checkQueueCapacity();
         return delegate.scheduleWithFixedDelay(runnable, initialDelay, delay, timeUnit);
     }
@@ -76,7 +76,7 @@ public class BoundedScheduledExecutorService implements ScheduledExecutorService
         delegate.shutdown();
     }
 
-    @NotNull
+    @NonNull
     @Override
     public List<Runnable> shutdownNow() {
         return delegate.shutdownNow();
@@ -93,55 +93,55 @@ public class BoundedScheduledExecutorService implements ScheduledExecutorService
     }
 
     @Override
-    public boolean awaitTermination(long timeout, @NotNull TimeUnit timeUnit) throws InterruptedException {
+    public boolean awaitTermination(long timeout, @NonNull TimeUnit timeUnit) throws InterruptedException {
         return delegate.awaitTermination(timeout, timeUnit);
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public <T> Future<T> submit(@NotNull Callable<T> callable) {
+    public <T> Future<T> submit(@NonNull Callable<T> callable) {
         throw new UnsupportedOperationException("Not supported");
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public <T> Future<T> submit(@NotNull Runnable runnable, T result) {
+    public <T> Future<T> submit(@NonNull Runnable runnable, T result) {
         throw new UnsupportedOperationException("Not supported");
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public Future<?> submit(@NotNull Runnable runnable) {
+    public Future<?> submit(@NonNull Runnable runnable) {
         throw new UnsupportedOperationException("Not supported");
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public <T> List<Future<T>> invokeAll(@NotNull Collection<? extends Callable<T>> tasks) {
+    public <T> List<Future<T>> invokeAll(@NonNull Collection<? extends Callable<T>> tasks) {
         throw new UnsupportedOperationException("Not supported");
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public <T> List<Future<T>> invokeAll(@NotNull Collection<? extends Callable<T>> tasks, long timeout,
-                                         @NotNull TimeUnit timeUnit) {
+    public <T> List<Future<T>> invokeAll(@NonNull Collection<? extends Callable<T>> tasks, long timeout,
+                                         @NonNull TimeUnit timeUnit) {
         throw new UnsupportedOperationException("Not supported");
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public <T> T invokeAny(@NotNull Collection<? extends Callable<T>> tasks) {
-        throw new UnsupportedOperationException("Not supported");
-    }
-
-    @Override
-    public <T> T invokeAny(@NotNull Collection<? extends Callable<T>> tasks, long timeout,
-                           @NotNull TimeUnit timeUnit) {
+    public <T> T invokeAny(@NonNull Collection<? extends Callable<T>> tasks) {
         throw new UnsupportedOperationException("Not supported");
     }
 
     @Override
-    public void execute(@NotNull Runnable runnable) {
+    public <T> T invokeAny(@NonNull Collection<? extends Callable<T>> tasks, long timeout,
+                           @NonNull TimeUnit timeUnit) {
+        throw new UnsupportedOperationException("Not supported");
+    }
+
+    @Override
+    public void execute(@NonNull Runnable runnable) {
         checkQueueCapacity();
         delegate.execute(runnable);
     }

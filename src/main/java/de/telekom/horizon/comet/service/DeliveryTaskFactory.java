@@ -12,7 +12,11 @@ import de.telekom.horizon.comet.config.CometConfig;
 import de.telekom.horizon.comet.config.CometMetrics;
 import de.telekom.horizon.comet.model.DeliveryTaskRecord;
 import lombok.Getter;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
+
+import java.util.concurrent.Executor;
 
 /**
  * The {@code DeliveryTaskFactory} class for creating instances of {@link DeliveryTask}.
@@ -38,6 +42,8 @@ public class DeliveryTaskFactory {
 
     private final CometMetrics cometMetrics;
 
+    private final Executor taskExecutor;
+
     /**
      * Constructs a DeliveryTaskFactory with necessary dependencies.
      *
@@ -50,7 +56,17 @@ public class DeliveryTaskFactory {
      * @param metricsHelper             The HorizonMetricsHelper instance for metrics-related operations.
      * @param cometMetrics              The CometMetrics instance for recording metrics.
      */
-    public DeliveryTaskFactory(CometConfig cometConfig, RestClient restClient, StateService stateService, CircuitBreakerCacheService circuitBreakerCacheService, DeDuplicationService deDuplicationService, HorizonTracer tracer, HorizonMetricsHelper metricsHelper, CometMetrics cometMetrics) {
+    public DeliveryTaskFactory(
+            CometConfig cometConfig,
+            RestClient restClient,
+            StateService stateService,
+            CircuitBreakerCacheService circuitBreakerCacheService,
+            DeDuplicationService deDuplicationService,
+            HorizonTracer tracer,
+            HorizonMetricsHelper metricsHelper,
+            CometMetrics cometMetrics,
+            @Qualifier("deliveryTaskExecutor") ThreadPoolTaskExecutor taskExecutor
+    ) {
         this.cometConfig = cometConfig;
         this.restClient = restClient;
         this.stateService = stateService;
@@ -59,6 +75,7 @@ public class DeliveryTaskFactory {
         this.tracer = tracer;
         this.metricsHelper = metricsHelper;
         this.cometMetrics = cometMetrics;
+        this.taskExecutor = taskExecutor;
     }
 
     /**
@@ -67,7 +84,7 @@ public class DeliveryTaskFactory {
      * @param deliveryTaskRecord The DeliveryTaskRecord containing information for creating the new task.
      * @return A new instance of DeliveryTask.
      */
-    public DeliveryTask createNew(DeliveryTaskRecord deliveryTaskRecord) {
+    public DeliveryTask createNew(final DeliveryTaskRecord deliveryTaskRecord) {
         return new DeliveryTask(deliveryTaskRecord);
     }
 }
