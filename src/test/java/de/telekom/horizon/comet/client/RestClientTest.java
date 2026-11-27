@@ -4,7 +4,9 @@
 
 package de.telekom.horizon.comet.client;
 
+import brave.Span;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import de.telekom.eni.pandora.horizon.tracing.DebugSpanWrapper;
 import de.telekom.eni.pandora.horizon.tracing.HorizonTracer;
 import de.telekom.horizon.comet.auth.OAuth2TokenCache;
 import de.telekom.horizon.comet.config.CometConfig;
@@ -12,6 +14,7 @@ import de.telekom.horizon.comet.test.utils.AbstractIntegrationTest;
 import de.telekom.horizon.comet.test.utils.HazelcastTestInstance;
 import de.telekom.horizon.comet.test.utils.ObjectGenerator;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
+import org.apache.hc.core5.concurrent.FutureCallback;
 import org.apache.hc.core5.http.HttpException;
 import org.apache.hc.core5.http.HttpRequest;
 import org.apache.hc.core5.http.HttpResponse;
@@ -35,7 +38,6 @@ import org.springframework.http.MediaType;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static de.telekom.horizon.comet.test.utils.ObjectGenerator.generateCallbackSubscriptionEventMessage;
@@ -53,22 +55,26 @@ class RestClientTest extends AbstractIntegrationTest {
     @Mock
     CloseableHttpAsyncClient closeableHttpClient;
     @Mock
-    Future<Message<HttpResponse,Void>> responseFuture;
-    @Mock
     RequestChannel requestChannel;
     @Mock
     ApplicationContext context;
+    @Mock
+    FutureCallback<Message<HttpResponse,Void>> futureCallback;
+    @Mock
+    Message<HttpResponse,Void> response;
+    @Mock
+    DebugSpanWrapper callbackSpan;
+
 
     RestClient restClient;
 
     @BeforeEach
     void initMock() throws InterruptedException {
         when(cometConfig.getHeaderPropagationBlacklist()).thenReturn(List.of("x-spacegate-token", "authorization", "content-length", "host", "accept.*", "x-forwarded.*"));
-        when(closeableHttpClient
-                .execute(any(AsyncRequestProducer.class),
-                        ArgumentMatchers.<AsyncResponseConsumer<Message<HttpResponse,Void>>>any(),
-                        any()))
-                .thenReturn(responseFuture);
+        doAnswer(invocation -> {
+            invocation.<FutureCallback<Message<HttpResponse,Void>>>getArgument(2).completed(response);
+            return null;
+        }).when(closeableHttpClient).execute(any(AsyncRequestProducer.class), any(), any());
         this.restClient = spy(new RestClient(cometConfig, horizonTracer, oAuth2TokenCache, closeableHttpClient, new ObjectMapper(), context));
     }
 
@@ -76,6 +82,7 @@ class RestClientTest extends AbstractIntegrationTest {
     @EnumSource(value = HttpStatus.class, names = {"CREATED", "OK", "ACCEPTED", "NO_CONTENT"}, mode = EnumSource.Mode.INCLUDE)
     @DisplayName("Send successful callback without tardis headers")
     void sendSuccessfulRequestWithoutTardisHeader(HttpStatus httpStatus) throws IOException, HttpException {
+        when(horizonTracer.startDebugSpan(anyString())).thenReturn(callbackSpan);
         AtomicReference<HttpRequest> capturedRequest = new AtomicReference<>();
         doAnswer(invocation -> {
                     capturedRequest.set(invocation.getArgument(0));
@@ -83,8 +90,10 @@ class RestClientTest extends AbstractIntegrationTest {
                 })
                 .when(requestChannel)
                 .sendRequest(any(), any(), any());
+        final var subscriptionEventMessage = generateCallbackSubscriptionEventMessage();
+        final var callbackUrl = "https://test.de";
 
-        assertDoesNotThrow(() -> restClient.callback(generateCallbackSubscriptionEventMessage(), "https://test.de", null));
+        assertDoesNotThrow(() -> restClient.callback(subscriptionEventMessage, callbackUrl, futureCallback));
 
         // check if internal headers are not in request
         verify(closeableHttpClient).execute(
@@ -135,6 +144,13 @@ class RestClientTest extends AbstractIntegrationTest {
                 }),
                 ArgumentMatchers.<AsyncResponseConsumer<Message<HttpResponse,Void>>>any(),
                 any());
+
+        verify(callbackSpan).kind(Span.Kind.CLIENT);
+        verify(horizonTracer).addTagsToSpanFromEventMessage(callbackSpan, subscriptionEventMessage);
+        verify(horizonTracer).addTagsToSpanFromSubscriptionEventMessage(callbackSpan, subscriptionEventMessage);
+        verify(callbackSpan).tag("callbackUrl", callbackUrl);
+        verify(callbackSpan).finish();
+        verify(futureCallback).completed(any());
     }
 
 }
